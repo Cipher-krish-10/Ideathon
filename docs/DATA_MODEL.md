@@ -264,13 +264,31 @@ hash-chained `AuditLog`, not this table.
 > tables carry rows. Left alone for now because no phase populates them yet and a
 > change there would be untested; it should be handled by the phase that does.
 
-## 9. Deliberate omissions
+## 9. Phase 2 amendment — Estimator
+
+**`Estimate` idempotency became version-aware**
+`@@unique([opportunityId, playbookId])` became
+`@@unique([opportunityId, playbookId, estimatorVersion])`. The old key meant a
+new estimator version could not score an opportunity an older version had
+already scored. Estimates are the audit trail behind a money decision, so a new
+version must be able to score alongside the old one — an `Intervention` stays
+explainable by the exact version that produced its numbers.
+
+**Estimator calibration lives in `src/server/config/estimator-config.ts`**
+`merchant_config.json` supplies base-rate priors, the gateway fee, discounts and
+channel costs, but no recency/tier/incentive modifier tables. The dataset is
+immutable, so those modifiers are declared as versioned configuration outside
+`src/core` and passed into the pure estimator as explicit input. They are
+plausible calibration constants, not measured effects, and should move into
+merchant configuration when that file is next regenerated.
+
+## 10. Deliberate omissions
 
 Not built yet:
 
-Estimator · LLM reasoning and `LlmCall` · guardrail engine · approval UI · Razorpay adapter · webhook ingestion · attribution engine · audit hash-chain *writer* (the table and its immutability exist; the append helper arrives with the first thing that emits events) · authentication and `Session`.
+LLM reasoning and `LlmCall` · guardrail engine · approval UI · Razorpay adapter · webhook ingestion · attribution engine · audit hash-chain *writer* (the table and its immutability exist; the append helper arrives with the first thing that emits events) · authentication and `Session`.
 
-## 10. Known limitations
+## 11. Known limitations
 
 - **`migrate reset` was not run.** Prisma 7 blocks destructive resets initiated by an AI agent without explicit user consent, which is correct behaviour. Both migrations were applied incrementally and `prisma migrate status` reports the database in sync; a from-scratch rebuild should be confirmed by a human running `npx prisma migrate reset --force`.
 - **`Int` caps a single monetary column at ₹2.14 crore.** Fine for this dataset; documented in §2 with the `BigInt` migration path.

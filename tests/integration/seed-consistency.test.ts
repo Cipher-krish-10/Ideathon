@@ -128,9 +128,18 @@ describe("seed consistency with the approved dataset", () => {
       expect(opportunity.detectorVersion).toBeTruthy();
     }
 
+    // Estimates come from the estimator, so provenance again: every row must
+    // name the version that scored it.
+    const estimates = await prisma.estimate.findMany({ where });
+    for (const estimate of estimates) {
+      expect(estimate.estimatorVersion).toBeTruthy();
+      expect(estimate.expectedNetPaise).toBe(
+        estimate.expectedGrossPaise - estimate.costPaise,
+      );
+    }
+
     // These belong to phases that do not exist yet. Any row would mean
-    // something wrote a projection or a money action before it was built.
-    expect(await prisma.estimate.count({ where })).toBe(0);
+    // something wrote a money action before it was built.
     expect(await prisma.intervention.count({ where })).toBe(0);
     expect(await prisma.approval.count({ where })).toBe(0);
     expect(await prisma.executionAttempt.count({ where })).toBe(0);

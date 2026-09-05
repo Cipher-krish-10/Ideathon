@@ -60,8 +60,14 @@ function compareAttempts(a: PaymentAttemptRecord, b: PaymentAttemptRecord): numb
   return a.id.localeCompare(b.id);
 }
 
-/** Whole days between an earlier instant and the reference instant. */
-function ageInDays(occurredAt: Date, referenceAt: Date): number {
+/**
+ * Whole days between an earlier instant and the reference instant.
+ *
+ * Exported because the estimator's recency modifier must measure age exactly as
+ * the detector did. Two private copies of this would drift apart eventually,
+ * and the divergence would show up as an unexplainable probability.
+ */
+export function failureAgeInDays(occurredAt: Date, referenceAt: Date): number {
   return Math.floor((referenceAt.getTime() - occurredAt.getTime()) / MS_PER_DAY);
 }
 
@@ -190,7 +196,7 @@ export function detectFailedPaymentRecovery(
 
     // Step 6: recency, measured from the operative failure, against the
     // reference instant rather than the wall clock.
-    const failureAgeDays = ageInDays(operative.occurredAt, referenceAt);
+    const failureAgeDays = failureAgeInDays(operative.occurredAt, referenceAt);
     if (operative.occurredAt.getTime() < recencyCutoff.getTime()) {
       exclude(
         "OUTSIDE_RECENCY_WINDOW",

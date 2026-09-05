@@ -3,6 +3,7 @@ export {
   DETECTOR_VERSION,
   aggregateCandidates,
   detectFailedPaymentRecovery,
+  failureAgeInDays,
 } from "./failed-payment-recovery";
 export { EXCLUSION_REASONS } from "./types";
 export type {

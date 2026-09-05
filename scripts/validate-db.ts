@@ -379,10 +379,43 @@ async function main() {
   await expectNoRows("integrity: opportunity target amounts are positive integers", prisma.$queryRaw`
     SELECT "id" FROM "opportunity_target" WHERE "recoverableAmountPaise" <= 0`);
 
+  // Estimates are produced by the estimator, so this too is a provenance check:
+  // every row must be stamped with the version that scored it, and its
+  // arithmetic must add up independently of the CHECK constraints.
+  const estimates = await prisma.estimate.findMany({ where });
+  check(
+    "source-of-truth only: every estimate records its estimator version",
+    estimates.every((e) => Boolean(e.estimatorVersion)),
+    `${estimates.filter((e) => !e.estimatorVersion).length} without provenance`,
+  );
+  check(
+    "integrity: expectedNet equals gross minus cost on every estimate",
+    estimates.every((e) => e.expectedNetPaise === e.expectedGrossPaise - e.costPaise),
+  );
+  check(
+    "integrity: cost equals discount + channel + gateway fee on every estimate",
+    estimates.every(
+      (e) => e.costPaise === e.discountCostPaise + e.channelCostPaise + e.gatewayFeePaise,
+    ),
+  );
+  check(
+    "integrity: every estimate probability is within 0..10000 bps",
+    estimates.every((e) => e.pRecoverAvgBps >= 0 && e.pRecoverAvgBps <= 10_000),
+  );
+  check(
+    "integrity: every estimate carries a deterministic inputs snapshot",
+    estimates.every((e) => {
+      const snapshot = e.inputsSnapshot as Record<string, unknown> | null;
+      return Boolean(snapshot && snapshot.targets && snapshot.config);
+    }),
+  );
+  await expectNoRows("integrity: every estimate resolves its opportunity", prisma.$queryRaw`
+    SELECT e."id" FROM "estimate" e
+      LEFT JOIN "opportunity" o ON o."id" = e."opportunityId" WHERE o."id" IS NULL`);
+
   // These belong to phases that do not exist yet. A non-zero count would mean
-  // something wrote a projection or a money action before it was built.
+  // something wrote a money action before it was built.
   for (const [label, count] of [
-    ["estimates", await prisma.estimate.count({ where })],
     ["interventions", await prisma.intervention.count({ where })],
     ["approvals", await prisma.approval.count({ where })],
     ["execution attempts", await prisma.executionAttempt.count({ where })],

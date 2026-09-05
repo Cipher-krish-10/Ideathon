@@ -540,7 +540,11 @@ model Estimate {
   playbook      Playbook       @relation(fields: [playbookId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   interventions Intervention[]
 
-  @@unique([opportunityId, playbookId])
+  /// Idempotency key for estimator runs, scoped BY VERSION. Re-running the same
+  /// estimator version over the same opportunity reuses its rows; a new version
+  /// scores alongside the old one rather than overwriting it, so an
+  /// intervention stays explainable by the version that produced its estimate.
+  @@unique([opportunityId, playbookId, estimatorVersion])
   @@index([merchantId])
   @@index([opportunityId])
   @@map("estimate")
