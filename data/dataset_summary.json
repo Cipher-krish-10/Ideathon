@@ -1,0 +1,84 @@
+{
+  "generated_with": {
+    "generator_version": "1.0.0",
+    "seed": 20260905,
+    "reference_date": "2026-09-01",
+    "window_start_date": "2026-03-02"
+  },
+  "row_counts": {
+    "customers": 500,
+    "products": 18,
+    "transactions": 1200,
+    "payment_attempts": 1223,
+    "failed_payment_attempts": 89,
+    "successful_payment_attempts": 1134
+  },
+  "money_paise": {
+    "total_transaction_value": 1225780600,
+    "captured_revenue": 1120859100,
+    "refunded_value": 17538100,
+    "failed_payment_value": 87383400
+  },
+  "money_rupees_display": {
+    "total_transaction_value": 12257806.0,
+    "captured_revenue": 11208591.0,
+    "refunded_value": 175381.0,
+    "failed_payment_value": 873834.0
+  },
+  "customers": {
+    "total": 500,
+    "with_failed_payment": 76,
+    "actively_suppressed": 6,
+    "expired_suppression": 9,
+    "tier_distribution": {
+      "HIGH": 65,
+      "LOW": 294,
+      "MEDIUM": 141
+    }
+  },
+  "transactions": {
+    "status_distribution": {
+      "CAPTURED": 1119,
+      "FAILED": 66,
+      "REFUNDED": 15
+    },
+    "multi_attempt_transactions": 18
+  },
+  "failure_reason_distribution": {
+    "authentication_failed": 12,
+    "expired_card": 18,
+    "insufficient_funds": 14,
+    "payment_method_declined": 17,
+    "payment_network_error": 16,
+    "suspected_fraud": 5,
+    "unknown": 7
+  },
+  "derived_opportunity_view": {
+    "note": "Computed by applying detector_config to the raw rows. Not stored on any row; recomputed independently by the validator and later by the TypeScript detector.",
+    "qualifying_transactions": 26,
+    "distinct_customers": 26,
+    "recoverable_amount_paise": 51427400,
+    "recoverable_amount_rupees_display": 514274.0,
+    "by_tier": {
+      "HIGH": 19,
+      "MEDIUM": 7
+    },
+    "by_failure_reason": {
+      "authentication_failed": 5,
+      "expired_card": 7,
+      "insufficient_funds": 3,
+      "payment_method_declined": 5,
+      "payment_network_error": 6
+    }
+  },
+  "planted_cohort_sizes": {
+    "A_HIGH_VALUE_RECOVERABLE": 12,
+    "B1_NON_RECOVERABLE_REASON": 8,
+    "B2_SUPPRESSED_CUSTOMER": 6,
+    "C_ALREADY_RECOVERED": 10,
+    "D_REPEATED_FAILURE": 8,
+    "E_LOW_VALUE_FAILURE": 12,
+    "F_HIGH_VALUE_OPPORTUNITY": 6,
+    "G_STALE_FAILURE": 8
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "schema_version": "1.0.0",
+  "merchant": {
+    "merchant_id": "merch_demo_001",
+    "name": "Nimbus Commerce Pvt Ltd",
+    "business_type": "saas_and_services",
+    "timezone": "Asia/Kolkata",
+    "currency": "INR",
+    "mode": "TEST"
+  },
+  "dataset": {
+    "generator_version": "1.0.0",
+    "seed": 20260905,
+    "reference_date": "2026-09-01",
+    "reference_datetime": "2026-09-01T23:59:59+05:30",
+    "window_start_date": "2026-03-02",
+    "window_days": 183,
+    "note": "reference_date is the dataset's 'as of' instant. The detector must evaluate recency and suppression against this value, not the wall clock, or the demo stops being reproducible."
+  },
+  "detector_config": {
+    "detector_key": "FAILED_PAYMENT_RECOVERY",
+    "detector_version": "1.0.0",
+    "recoverable_failure_reasons": [
+      "insufficient_funds",
+      "payment_network_error",
+      "authentication_failed",
+      "payment_method_declined",
+      "expired_card"
+    ],
+    "non_recoverable_failure_reasons": [
+      "suspected_fraud",
+      "unknown"
+    ],
+    "recency_window_days": 30,
+    "min_transaction_amount_paise": 50000,
+    "min_customer_lifetime_value_paise": 200000,
+    "note": "Classification lives here as merchant policy, never as a per-row column. Rows carry evidence only."
+  },
+  "customer_tiers": {
+    "HIGH": {
+      "min_lifetime_value_paise": 5000000
+    },
+    "MEDIUM": {
+      "min_lifetime_value_paise": 1000000
+    },
+    "LOW": {
+      "min_lifetime_value_paise": 0
+    }
+  },
+  "guardrail_policy": {
+    "policy_version": 1,
+    "rules": {
+      "MAX_DISCOUNT_BPS": {
+        "severity": "BLOCK",
+        "limit": 1500
+      },
+      "MAX_SINGLE_ACTION_EXPOSURE_PAISE": {
+        "severity": "BLOCK",
+        "limit": 5000000
+      },
+      "DAILY_DISCOUNT_BUDGET_PAISE": {
+        "severity": "BLOCK",
+        "limit": 2500000
+      },
+      "MIN_EXPECTED_NET_PAISE": {
+        "severity": "BLOCK",
+        "limit": 100000
+      },
+      "MAX_CONTACTS_PER_CUSTOMER": {
+        "severity": "BLOCK",
+        "limit": 2,
+        "window_days": 7
+      },
+      "DO_NOT_CONTACT": {
+        "severity": "BLOCK"
+      },
+      "QUIET_HOURS": {
+        "severity": "REQUIRE_APPROVAL",
+        "start_hour": 21,
+        "end_hour": 9
+      },
+      "MAX_CONCURRENT_LIVE": {
+        "severity": "BLOCK",
+        "limit": 3
+      },
+      "TEST_MODE_ONLY": {
+        "severity": "BLOCK"
+      },
+      "LOW_CONFIDENCE": {
+        "severity": "REQUIRE_APPROVAL",
+        "min_confidence": "MEDIUM"
+      }
+    }
+  },
+  "playbooks": [
+    {
+      "key": "REMINDER_ONLY",
+      "name": "Plain retry reminder",
+      "action_type": "REMINDER_ONLY",
+      "default_discount_bps": 0,
+      "channel_cost_paise": 50
+    },
+    {
+      "key": "PAYMENT_LINK_PLAIN",
+      "name": "Payment link, no incentive",
+      "action_type": "PAYMENT_LINK_PLAIN",
+      "default_discount_bps": 0,
+      "channel_cost_paise": 50
+    },
+    {
+      "key": "PAYMENT_LINK_WITH_OFFER",
+      "name": "Payment link with capped discount",
+      "action_type": "PAYMENT_LINK_WITH_OFFER",
+      "default_discount_bps": 1000,
+      "channel_cost_paise": 50
+    }
+  ],
+  "playbook_priors": [
+    {
+      "playbook_key": "PAYMENT_LINK_PLAIN",
+      "failure_reason": "authentication_failed",
+      "alpha": 16.0,
+      "beta": 24.0,
+      "implied_base_rate": 0.4
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_WITH_OFFER",
+      "failure_reason": "authentication_failed",
+      "alpha": 18.8,
+      "beta": 21.2,
+      "implied_base_rate": 0.47
+    },
+    {
+      "playbook_key": "REMINDER_ONLY",
+      "failure_reason": "authentication_failed",
+      "alpha": 11.2,
+      "beta": 28.8,
+      "implied_base_rate": 0.28
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_PLAIN",
+      "failure_reason": "expired_card",
+      "alpha": 13.2,
+      "beta": 26.8,
+      "implied_base_rate": 0.33
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_WITH_OFFER",
+      "failure_reason": "expired_card",
+      "alpha": 16.4,
+      "beta": 23.6,
+      "implied_base_rate": 0.41
+    },
+    {
+      "playbook_key": "REMINDER_ONLY",
+      "failure_reason": "expired_card",
+      "alpha": 8.8,
+      "beta": 31.2,
+      "implied_base_rate": 0.22
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_PLAIN",
+      "failure_reason": "insufficient_funds",
+      "alpha": 10.4,
+      "beta": 29.6,
+      "implied_base_rate": 0.26
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_WITH_OFFER",
+      "failure_reason": "insufficient_funds",
+      "alpha": 15.2,
+      "beta": 24.8,
+      "implied_base_rate": 0.38
+    },
+    {
+      "playbook_key": "REMINDER_ONLY",
+      "failure_reason": "insufficient_funds",
+      "alpha": 7.2,
+      "beta": 32.8,
+      "implied_base_rate": 0.18
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_PLAIN",
+      "failure_reason": "payment_method_declined",
+      "alpha": 9.6,
+      "beta": 30.4,
+      "implied_base_rate": 0.24
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_WITH_OFFER",
+      "failure_reason": "payment_method_declined",
+      "alpha": 14.0,
+      "beta": 26.0,
+      "implied_base_rate": 0.35
+    },
+    {
+      "playbook_key": "REMINDER_ONLY",
+      "failure_reason": "payment_method_declined",
+      "alpha": 6.4,
+      "beta": 33.6,
+      "implied_base_rate": 0.16
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_PLAIN",
+      "failure_reason": "payment_network_error",
+      "alpha": 18.4,
+      "beta": 21.6,
+      "implied_base_rate": 0.46
+    },
+    {
+      "playbook_key": "PAYMENT_LINK_WITH_OFFER",
+      "failure_reason": "payment_network_error",
+      "alpha": 20.8,
+      "beta": 19.2,
+      "implied_base_rate": 0.52
+    },
+    {
+      "playbook_key": "REMINDER_ONLY",
+      "failure_reason": "payment_network_error",
+      "alpha": 13.6,
+      "beta": 26.4,
+      "implied_base_rate": 0.34
+    }
+  ],
+  "estimator_config": {
+    "gateway_fee_bps": 200,
+    "attribution_window_days": 14,
+    "note": "Priors are Beta(alpha, beta) pseudo-counts seeded from published recovery-rate ranges. They are starting beliefs, not observations, and are overwritten by real outcomes as the LEARN step runs."
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "_warning": "TEST FIXTURE ONLY. This file records which planted scenario each row belongs to. It must never be loaded by the RevenuePilot application - doing so would leak labels the detector is supposed to derive.",
+  "cohorts": {
+    "A_HIGH_VALUE_RECOVERABLE": [
+      "cust_0015",
+      "cust_0123",
+      "cust_0133",
+      "cust_0210",
+      "cust_0274",
+      "cust_0290",
+      "cust_0331",
+      "cust_0407",
+      "cust_0409",
+      "cust_0422",
+      "cust_0479",
+      "cust_0482"
+    ],
+    "B1_NON_RECOVERABLE_REASON": [
+      "cust_0134",
+      "cust_0258",
+      "cust_0311",
+      "cust_0318",
+      "cust_0328",
+      "cust_0351",
+      "cust_0461",
+      "cust_0483"
+    ],
+    "B2_SUPPRESSED_CUSTOMER": [
+      "cust_0119",
+      "cust_0146",
+      "cust_0181",
+      "cust_0287",
+      "cust_0362",
+      "cust_0435"
+    ],
+    "C_ALREADY_RECOVERED": [
+      "cust_0005",
+      "cust_0115",
+      "cust_0141",
+      "cust_0273",
+      "cust_0337",
+      "cust_0388",
+      "cust_0450",
+      "cust_0471",
+      "cust_0474",
+      "cust_0475"
+    ],
+    "D_REPEATED_FAILURE": [
+      "cust_0046",
+      "cust_0073",
+      "cust_0121",
+      "cust_0163",
+      "cust_0253",
+      "cust_0363",
+      "cust_0374",
+      "cust_0395"
+    ],
+    "E_LOW_VALUE_FAILURE": [
+      "cust_0009",
+      "cust_0144",
+      "cust_0178",
+      "cust_0186",
+      "cust_0223",
+      "cust_0246",
+      "cust_0272",
+      "cust_0276",
+      "cust_0322",
+      "cust_0399",
+      "cust_0410",
+      "cust_0484"
+    ],
+    "F_HIGH_VALUE_OPPORTUNITY": [
+      "cust_0021",
+      "cust_0103",
+      "cust_0169",
+      "cust_0204",
+      "cust_0231",
+      "cust_0285"
+    ],
+    "G_STALE_FAILURE": [
+      "cust_0248",
+      "cust_0268",
+      "cust_0305",
+      "cust_0323",
+      "cust_0330",
+      "cust_0391",
+      "cust_0421",
+      "cust_0462"
+    ],
+    "H_EXPIRED_SUPPRESSION": [
+      "cust_0001",
+      "cust_0098",
+      "cust_0135",
+      "cust_0187",
+      "cust_0211",
+      "cust_0357",
+      "cust_0401",
+      "cust_0402",
+      "cust_0457"
+    ],
+    "I_ORGANIC_FAILURE": [
+      "cust_0095",
+      "cust_0239",
+      "cust_0320",
+      "cust_0386",
+      "cust_0426",
+      "cust_0477"
+    ],
+    "J_REFUNDED": [
+      "txn_000506",
+      "txn_000629",
+      "txn_000721",
+      "txn_000755",
+      "txn_000856",
+      "txn_000865",
+      "txn_000873",
+      "txn_000876",
+      "txn_000893",
+      "txn_000897",
+      "txn_000900",
+      "txn_001130",
+      "txn_001133",
+      "txn_001138",
+      "txn_001178"
+    ],
+    "_txn_A_HIGH_VALUE_RECOVERABLE": [
+      "txn_000001",
+      "txn_000002",
+      "txn_000003",
+      "txn_000004",
+      "txn_000005",
+      "txn_000006",
+      "txn_000007",
+      "txn_000008",
+      "txn_000009",
+      "txn_000010",
+      "txn_000011",
+      "txn_000012"
+    ],
+    "_txn_B1_NON_RECOVERABLE_REASON": [
+      "txn_000013",
+      "txn_000014",
+      "txn_000015",
+      "txn_000016",
+      "txn_000017",
+      "txn_000018",
+      "txn_000019",
+      "txn_000020"
+    ],
+    "_txn_B2_SUPPRESSED_CUSTOMER": [
+      "txn_000021",
+      "txn_000022",
+      "txn_000023",
+      "txn_000024",
+      "txn_000025",
+      "txn_000026"
+    ],
+    "_txn_C_ALREADY_RECOVERED": [
+      "txn_000027",
+      "txn_000028",
+      "txn_000029",
+      "txn_000030",
+      "txn_000031",
+      "txn_000032",
+      "txn_000033",
+      "txn_000034",
+      "txn_000035",
+      "txn_000036"
+    ],
+    "_txn_D_REPEATED_FAILURE": [
+      "txn_000037",
+      "txn_000038",
+      "txn_000039",
+      "txn_000040",
+      "txn_000041",
+      "txn_000042",
+      "txn_000043",
+      "txn_000044"
+    ],
+    "_txn_E_LOW_VALUE_FAILURE": [
+      "txn_000045",
+      "txn_000046",
+      "txn_000047",
+      "txn_000048",
+      "txn_000049",
+      "txn_000050",
+      "txn_000051",
+      "txn_000052",
+      "txn_000053",
+      "txn_000054",
+      "txn_000055",
+      "txn_000056"
+    ],
+    "_txn_F_HIGH_VALUE_OPPORTUNITY": [
+      "txn_000057",
+      "txn_000058",
+      "txn_000059",
+      "txn_000060",
+      "txn_000061",
+      "txn_000062"
+    ],
+    "_txn_G_STALE_FAILURE": [
+      "txn_000063",
+      "txn_000064",
+      "txn_000065",
+      "txn_000066",
+      "txn_000067",
+      "txn_000068",
+      "txn_000069",
+      "txn_000070"
+    ],
+    "_txn_I_ORGANIC_FAILURE": [
+      "txn_001195",
+      "txn_001196",
+      "txn_001197",
+      "txn_001198",
+      "txn_001199",
+      "txn_001200"
+    ]
+  }
+}

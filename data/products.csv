@@ -1,0 +1,19 @@
+product_id,name,category,price_paise,currency,is_active
+prod_001,Starter Plan - Monthly,subscription,49900,INR,true
+prod_002,Growth Plan - Monthly,subscription,149900,INR,true
+prod_003,Scale Plan - Monthly,subscription,399900,INR,true
+prod_004,Growth Plan - Annual,subscription,1499900,INR,true
+prod_005,Scale Plan - Annual,subscription,3999900,INR,true
+prod_006,Enterprise Plan - Annual,subscription,8999900,INR,true
+prod_007,Analytics Add-on,addon,79900,INR,true
+prod_008,Priority Support Add-on,addon,129900,INR,true
+prod_009,Extra Seats Pack (5),addon,249900,INR,true
+prod_010,Onboarding Workshop,service,799900,INR,true
+prod_011,Migration Service,service,2499900,INR,true
+prod_012,Custom Integration Build,service,6499900,INR,true
+prod_013,Certification Course,course,299900,INR,true
+prod_014,Advanced Course Bundle,course,899900,INR,true
+prod_015,Branded Merchandise Kit,merch,19900,INR,true
+prod_016,Sticker Pack,merch,14900,INR,true
+prod_017,Hardware Reader,hardware,449900,INR,true
+prod_018,Hardware Reader Pro,hardware,1199900,INR,true
