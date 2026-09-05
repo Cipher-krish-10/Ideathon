@@ -358,18 +358,37 @@ async function main() {
     expectEqual(`traceability: every ${label} keeps its dataset sourceRef`, count, total);
   }
 
-  // ---- Agent tables are empty ----------------------------------------------
-  // The database holds SOURCE OF TRUTH only. Anything derived would mean the
-  // seed had started doing the detector's job.
+  // ---- The seed writes source of truth only ---------------------------------
+  // Phases beyond the seed legitimately add rows here, so these checks assert
+  // PROVENANCE rather than emptiness: nothing derived may exist that a detector
+  // run cannot account for.
+  const opportunities = await prisma.opportunity.findMany({ where });
+  check(
+    "source-of-truth only: every opportunity was produced by a detector run",
+    opportunities.every((o) => Boolean(o.detectorKey) && Boolean(o.detectorVersion)),
+    `${opportunities.filter((o) => !o.detectorKey || !o.detectorVersion).length} without provenance`,
+  );
+  await expectNoRows("integrity: every opportunity target resolves its opportunity", prisma.$queryRaw`
+    SELECT t."id" FROM "opportunity_target" t
+      LEFT JOIN "opportunity" o ON o."id" = t."opportunityId" WHERE o."id" IS NULL`);
+  await expectNoRows("integrity: opportunity targets never cross a merchant boundary", prisma.$queryRaw`
+    SELECT t."id" FROM "opportunity_target" t
+      JOIN "opportunity" o ON o."id" = t."opportunityId"
+      JOIN "transaction" x ON x."id" = t."transactionId"
+     WHERE x."merchantId" <> o."merchantId"`);
+  await expectNoRows("integrity: opportunity target amounts are positive integers", prisma.$queryRaw`
+    SELECT "id" FROM "opportunity_target" WHERE "recoverableAmountPaise" <= 0`);
+
+  // These belong to phases that do not exist yet. A non-zero count would mean
+  // something wrote a projection or a money action before it was built.
   for (const [label, count] of [
-    ["opportunities", await prisma.opportunity.count({ where })],
     ["estimates", await prisma.estimate.count({ where })],
     ["interventions", await prisma.intervention.count({ where })],
     ["approvals", await prisma.approval.count({ where })],
     ["execution attempts", await prisma.executionAttempt.count({ where })],
     ["attribution records", await prisma.attributionRecord.count({ where })],
   ] as const) {
-    expectEqual(`source-of-truth only: no ${label} seeded`, count, 0);
+    expectEqual(`not yet implemented: no ${label} exist`, count, 0);
   }
 
   // ---- Report ---------------------------------------------------------------

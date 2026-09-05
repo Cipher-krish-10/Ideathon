@@ -445,6 +445,11 @@ model Opportunity {
   estimates     Estimate[]
   interventions Intervention[]
 
+  /// Idempotency key for detector runs. Re-running the same detector version
+  /// against the same reference instant must update or reuse one row, never
+  /// create a second. Enforced here so a concurrent double-run conflicts
+  /// rather than silently duplicating an opportunity.
+  @@unique([merchantId, detectorKey, detectorVersion, referenceAt])
   @@index([merchantId, status])
   @@index([merchantId, type, detectedAt])
   @@map("opportunity")
@@ -462,10 +467,16 @@ model OpportunityTarget {
 
   createdAt DateTime @default(now())
 
+  // Cascade, not Restrict. A target is DERIVED data -- a pointer into source
+  // records that the detector can recompute at any time -- so it has no meaning
+  // once the row it points at is gone. Restrict here made a merchant
+  // undeletable the moment a detector ran, which is not a guarantee worth
+  // having: the durable record of what happened is the append-only AuditLog,
+  // not this table.
   opportunity    Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  paymentAttempt PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  paymentAttempt PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([opportunityId, transactionId])
   @@index([opportunityId])

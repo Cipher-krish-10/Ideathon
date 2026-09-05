@@ -238,13 +238,39 @@ Primary keys are `cuid()`, not the dataset's identifiers, so real Razorpay data 
 
 ---
 
-## 8. Deliberate omissions
+## 8. Phase 1 amendments — Revenue Detective
 
-Not built, because this phase is the database foundation:
+Two schema changes came out of implementing the detector. Both are recorded here
+rather than in the detector's own notes, because they are data-model decisions.
 
-Revenue detector · estimator · LLM reasoning and `LlmCall` · guardrail engine · approval UI · Razorpay adapter · webhook ingestion · attribution engine · audit hash-chain *writer* (the table and its immutability exist; the append helper arrives with the first thing that emits events) · authentication and `Session`.
+**`Opportunity` gained a uniqueness key**
+`@@unique([merchantId, detectorKey, detectorVersion, referenceAt])`. Re-running
+the same detector version against the same reference instant must reuse one row,
+never create a second. Enforcing it as an index rather than as a service-layer
+check means a concurrent double-run conflicts loudly instead of silently
+double-counting recoverable revenue.
 
-## 9. Known limitations
+**`OpportunityTarget` foreign keys moved from `Restrict` to `Cascade`**
+The original `Restrict` on `customerId` / `transactionId` / `paymentAttemptId`
+made a merchant permanently undeletable the moment a detector run produced
+targets: the cascade from `Merchant` reached `customer` while a target still
+referenced it. That guarantee was not worth keeping. A target is *derived* data —
+a pointer into source records the detector can recompute from scratch at any
+time — and the durable record of what the agent decided is the append-only,
+hash-chained `AuditLog`, not this table.
+
+> The same latent issue exists on `InterventionTarget` and `AttributionRecord`,
+> whose `Restrict` FKs to `Customer`/`Transaction` will block teardown once those
+> tables carry rows. Left alone for now because no phase populates them yet and a
+> change there would be untested; it should be handled by the phase that does.
+
+## 9. Deliberate omissions
+
+Not built yet:
+
+Estimator · LLM reasoning and `LlmCall` · guardrail engine · approval UI · Razorpay adapter · webhook ingestion · attribution engine · audit hash-chain *writer* (the table and its immutability exist; the append helper arrives with the first thing that emits events) · authentication and `Session`.
+
+## 10. Known limitations
 
 - **`migrate reset` was not run.** Prisma 7 blocks destructive resets initiated by an AI agent without explicit user consent, which is correct behaviour. Both migrations were applied incrementally and `prisma migrate status` reports the database in sync; a from-scratch rebuild should be confirmed by a human running `npx prisma migrate reset --force`.
 - **`Int` caps a single monetary column at ₹2.14 crore.** Fine for this dataset; documented in §2 with the `BigInt` migration path.

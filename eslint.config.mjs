@@ -66,6 +66,64 @@ export default tseslint.config(
     },
   },
 
+  // ---------------------------------------------------------------------
+  // Purity boundary for src/core/**.
+  //
+  // The domain layer must stay framework-free and side-effect-free: it is the
+  // part of RevenuePilot whose answers have to be reproducible and auditable.
+  // Reaching for Prisma, Next, the network, or an LLM from here would make a
+  // detector's output depend on something a test cannot pin down.
+  //
+  // Persistence happens OUTSIDE the detector, in src/server/services.
+  // ---------------------------------------------------------------------
+  {
+    files: ["src/core/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "@/server/db", message: "src/core must not touch the database." },
+            {
+              name: "@/lib/env",
+              message:
+                "src/core must not read environment configuration. Pass values in as explicit inputs.",
+            },
+            {
+              name: "server-only",
+              message: "src/core is environment-agnostic and must not be server-pinned.",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "@/app/*", "@/app",
+                "@/server/*", "@/server",
+                "@/generated/*", "@/generated",
+                "**/generated/prisma/*",
+                "@prisma/*", "prisma", ".prisma/*",
+                "next", "next/*",
+                "react", "react-dom",
+              ],
+              message:
+                "src/core is a pure domain layer: no Prisma, no Next, no React. " +
+                "Accept explicit inputs and let src/server handle persistence.",
+            },
+            {
+              group: [
+                "node:http", "node:https", "node:net", "node:dns", "node:fs",
+                "node:fs/*", "axios", "node-fetch", "undici",
+                "@anthropic-ai/*", "openai", "razorpay",
+              ],
+              message:
+                "src/core performs no I/O: no network, no filesystem, no LLM, no payment provider.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Type-only imports of generated enums and model types are safe and useful
   // anywhere; only the client constructor is restricted above.
   {

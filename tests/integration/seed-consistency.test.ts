@@ -115,10 +115,21 @@ describe("seed consistency with the approved dataset", () => {
     }
   });
 
-  it("holds source of truth only — nothing derived is seeded", async () => {
-    // If any of these are non-zero, the seed has started doing the detector's job.
+  it("holds source of truth only — the seed derives nothing", async () => {
     const where = { merchantId };
-    expect(await prisma.opportunity.count({ where })).toBe(0);
+
+    // Opportunities are legitimately created by a detector run, so the
+    // assertion is about PROVENANCE, not emptiness: nothing derived may exist
+    // that a detector cannot account for. A seed-created opportunity would
+    // carry no detector stamp.
+    const opportunities = await prisma.opportunity.findMany({ where });
+    for (const opportunity of opportunities) {
+      expect(opportunity.detectorKey).toBeTruthy();
+      expect(opportunity.detectorVersion).toBeTruthy();
+    }
+
+    // These belong to phases that do not exist yet. Any row would mean
+    // something wrote a projection or a money action before it was built.
     expect(await prisma.estimate.count({ where })).toBe(0);
     expect(await prisma.intervention.count({ where })).toBe(0);
     expect(await prisma.approval.count({ where })).toBe(0);

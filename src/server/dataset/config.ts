@@ -5,6 +5,9 @@
  * on this file's shape, and a silent structural drift would surface much later
  * as a wrong number on a demo screen.
  */
+import nodeFs from "node:fs";
+import nodePath from "node:path";
+
 import { z } from "zod";
 
 export const merchantConfigSchema = z.object({
@@ -101,6 +104,18 @@ export const datasetSummarySchema = z.object({
     multi_attempt_transactions: z.number().int(),
   }),
   failure_reason_distribution: z.record(z.string(), z.number().int()),
+  /**
+   * The opportunity view the Python validator derives independently from the
+   * CSVs. The TypeScript detector must reproduce it exactly — three separate
+   * implementations agreeing is the strongest regression signal available.
+   */
+  derived_opportunity_view: z.object({
+    qualifying_transactions: z.number().int(),
+    distinct_customers: z.number().int(),
+    recoverable_amount_paise: z.number().int(),
+    by_tier: z.record(z.string(), z.number().int()),
+    by_failure_reason: z.record(z.string(), z.number().int()),
+  }),
 });
 
 export type DatasetSummary = z.infer<typeof datasetSummarySchema>;
@@ -115,4 +130,38 @@ export function toMilli(value: number): number {
     throw new Error(`${value} has more precision than milli-units can represent`);
   }
   return scaled;
+}
+
+// ---------------------------------------------------------------------------
+// Loading
+// ---------------------------------------------------------------------------
+
+/**
+ * Read and validate data/merchant_config.json.
+ *
+ * `detector_config` is deliberately NOT seeded into the database: persisting
+ * the recoverable/non-recoverable classification as rows would be exactly the
+ * label leakage docs/DATASET_SPEC.md forbids. It is merchant POLICY, read as
+ * configuration at run time.
+ *
+ * Cached, because the detector service reads it on every run and the file is
+ * immutable within a process.
+ */
+let cachedConfig: MerchantConfig | undefined;
+
+export function loadMerchantConfig(
+  options: { dataDir?: string; reload?: boolean } = {},
+): MerchantConfig {
+  if (cachedConfig && !options.reload) return cachedConfig;
+
+  const dataDir = options.dataDir ?? nodePath.join(process.cwd(), "data");
+  const file = nodePath.join(dataDir, "merchant_config.json");
+  const raw = nodeFs.readFileSync(file, "utf8");
+  cachedConfig = merchantConfigSchema.parse(JSON.parse(raw));
+  return cachedConfig;
+}
+
+/** Test hook: drop the memoised config. */
+export function resetMerchantConfigCache(): void {
+  cachedConfig = undefined;
 }
