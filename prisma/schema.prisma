@@ -1,0 +1,867 @@
+// RevenuePilot — database schema
+//
+// Design rules (see docs/DATA_MODEL.md for the full rationale):
+//
+//   MONEY      Every monetary field is `Int`, denominated in PAISE. No Float,
+//              no Decimal, no rupee-scale storage anywhere. Probabilities that
+//              feed money math are stored as basis points (Int) for the same
+//              reason.
+//   TENANCY    Every merchant-owned table carries `merchantId` and is indexed
+//              on it. Natural keys are unique PER MERCHANT, never globally.
+//   SOURCE     `sourceRef` preserves the approved dataset's own identifier so
+//              every seeded row traces back to data/*.csv.
+//   SAFETY     The LLM never executes. Schema-enforceable parts of that promise
+//              (approval gating, idempotency, versioning, append-only audit)
+//              live here and in migrations/*/constraints.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7: the connection URL lives in prisma.config.ts, and the runtime
+// client is constructed with a driver adapter (see src/server/db.ts).
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum MerchantMode {
+  TEST
+  LIVE
+}
+
+enum UserRole {
+  VIEWER
+  APPROVER
+  ADMIN
+}
+
+enum CustomerTier {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// Widened form of CustomerTier used where a row may apply to every tier.
+/// Avoids NULL in unique constraints, where Postgres treats NULLs as distinct.
+enum CustomerTierScope {
+  ALL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SuppressionReason {
+  CUSTOMER_OPT_OUT
+  CHARGEBACK_DISPUTE
+  SUPPORT_ESCALATION
+}
+
+enum ProductCategory {
+  SUBSCRIPTION
+  ADDON
+  SERVICE
+  COURSE
+  MERCH
+  HARDWARE
+}
+
+enum PaymentMethod {
+  CARD
+  UPI
+  NETBANKING
+  WALLET
+}
+
+enum TransactionStatus {
+  PENDING
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum AttemptStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+/// RevenuePilot's internal failure taxonomy. These are NOT Razorpay enums; no
+/// correspondence is claimed. Provider error codes are mapped onto these at
+/// ingest time (see docs/DATASET_SPEC.md section 5).
+enum FailureReason {
+  INSUFFICIENT_FUNDS
+  PAYMENT_NETWORK_ERROR
+  AUTHENTICATION_FAILED
+  PAYMENT_METHOD_DECLINED
+  EXPIRED_CARD
+  SUSPECTED_FRAUD
+  UNKNOWN
+}
+
+enum OpportunityType {
+  FAILED_PAYMENT_RECOVERY
+}
+
+enum OpportunityStatus {
+  OPEN
+  PLANNED
+  DISMISSED
+  CLOSED
+}
+
+enum PlaybookActionType {
+  REMINDER_ONLY
+  PAYMENT_LINK_PLAIN
+  PAYMENT_LINK_WITH_OFFER
+}
+
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Intervention lifecycle. Mirrors the state machine in ARCHITECTURE.md section 5.
+/// Terminal: GUARDRAIL_BLOCKED, REJECTED, EXPIRED, CANCELLED, LEARNED.
+enum InterventionState {
+  DRAFT
+  PROPOSED
+  GUARDRAIL_BLOCKED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  EXECUTING
+  EXECUTED
+  EXECUTION_FAILED
+  OBSERVING
+  CONVERTED
+  NOT_CONVERTED
+  LEARNED
+}
+
+/// Records whether a proposal came from the LLM or from the deterministic
+/// fallback ranker. Surfaced in the UI so a degraded run is never silent.
+enum ReasoningMode {
+  LLM
+  DETERMINISTIC_FALLBACK
+}
+
+enum GuardrailPhase {
+  PRE_APPROVAL
+  PRE_EXECUTION
+}
+
+enum GuardrailDecision {
+  PASS
+  WARN
+  REQUIRE_APPROVAL
+  BLOCK
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum ExecutionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum ArtifactType {
+  PAYMENT_LINK
+  OFFER
+}
+
+enum AttributionMethod {
+  DIRECT_REF
+  WINDOW_MATCH
+  MANUAL
+}
+
+enum ActorType {
+  SYSTEM
+  AGENT
+  USER
+  WEBHOOK
+}
+
+// ---------------------------------------------------------------------------
+// Identity and tenancy
+// ---------------------------------------------------------------------------
+
+model Merchant {
+  id           String       @id @default(cuid())
+  /// Identifier from data/merchant_config.json, e.g. "merch_demo_001".
+  sourceRef    String       @unique
+  name         String
+  businessType String
+  timezone     String       @default("Asia/Kolkata")
+  currency     String       @default("INR")
+  mode         MerchantMode @default(TEST)
+
+  /// The dataset's "as of" instant. Detectors evaluate recency and suppression
+  /// against THIS, not the wall clock, or the demo stops being reproducible.
+  datasetReferenceAt DateTime
+  datasetSeed        Int
+  datasetVersion     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                User[]
+  customers            Customer[]
+  products             Product[]
+  transactions         Transaction[]
+  paymentAttempts      PaymentAttempt[]
+  opportunities        Opportunity[]
+  playbooks            Playbook[]
+  estimates            Estimate[]
+  interventions        Intervention[]
+  guardrailPolicies    GuardrailPolicy[]
+  guardrailEvaluations GuardrailEvaluation[]
+  approvals            Approval[]
+  executionAttempts    ExecutionAttempt[]
+  razorpayArtifacts    RazorpayArtifact[]
+  webhookEvents        WebhookEvent[]
+  attributionRecords   AttributionRecord[]
+  playbookStats        PlaybookStat[]
+  auditLogs            AuditLog[]
+
+  @@map("merchant")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  merchantId String
+  email      String
+  name       String
+  role       UserRole @default(VIEWER)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  merchant           Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  approvals          Approval[]
+  guardrailPolicies  GuardrailPolicy[]
+
+  @@unique([merchantId, email])
+  @@index([merchantId, role])
+  @@map("user")
+}
+
+// ---------------------------------------------------------------------------
+// Source data — the immutable world the agent observes
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id         String @id @default(cuid())
+  merchantId String
+  /// Dataset identifier, e.g. "cust_0001".
+  sourceRef  String
+  externalRef String
+
+  maskedEmail String
+  maskedPhone String
+  city        String
+  signupAt    DateTime
+
+  /// Pre-window spend. historicalValuePaise + in-window captured == lifetimeValuePaise.
+  historicalValuePaise Int
+  lifetimeValuePaise   Int
+  tier                 CustomerTier
+
+  /// A DATE, not a boolean. Compared against Merchant.datasetReferenceAt: an
+  /// expired suppression does NOT suppress. Read by the DO_NOT_CONTACT guardrail.
+  doNotContactUntil DateTime?
+  suppressionReason SuppressionReason?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant            Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transactions        Transaction[]
+  paymentAttempts     PaymentAttempt[]
+  opportunityTargets  OpportunityTarget[]
+  interventionTargets InterventionTarget[]
+
+  @@unique([merchantId, sourceRef])
+  @@index([merchantId, tier])
+  @@index([merchantId, lifetimeValuePaise])
+  @@index([merchantId, doNotContactUntil])
+  @@map("customer")
+}
+
+model Product {
+  id         String          @id @default(cuid())
+  merchantId String
+  /// Dataset identifier, e.g. "prod_001".
+  sourceRef  String
+  name       String
+  category   ProductCategory
+  pricePaise Int
+  currency   String          @default("INR")
+  isActive   Boolean         @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transactions Transaction[]
+
+  @@unique([merchantId, sourceRef])
+  @@index([merchantId, category])
+  @@map("product")
+}
+
+/// An order intent. Its status is reconciled FROM its attempt chain, never
+/// asserted independently.
+model Transaction {
+  id         String @id @default(cuid())
+  merchantId String
+  customerId String
+  productId  String
+  /// Dataset identifier, e.g. "txn_000001".
+  sourceRef  String
+
+  quantity    Int               @default(1)
+  amountPaise Int
+  currency    String            @default("INR")
+  status      TransactionStatus
+  method      PaymentMethod
+  /// Denormalised chain length. Invariant: equals count(paymentAttempts).
+  attemptCount Int
+
+  /// Source timestamps. Distinct from createdAt, which is when WE ingested the row.
+  occurredAt DateTime
+  settledAt  DateTime
+  refundedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant            Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentAttempts     PaymentAttempt[]
+  opportunityTargets  OpportunityTarget[]
+  interventionTargets InterventionTarget[]
+  attributionRecords  AttributionRecord[]
+
+  @@unique([merchantId, sourceRef])
+  @@index([merchantId, status])
+  @@index([merchantId, customerId])
+  @@index([merchantId, occurredAt])
+  /// Serves the detector's primary scan: unpaid transactions, most recent first.
+  @@index([merchantId, status, occurredAt])
+  @@map("transaction")
+}
+
+/// Primary detector evidence. Retry chains determine whether a failed
+/// transaction is still unpaid and WHICH failure reason is operative — a chain
+/// ending in EXPIRED_CARD is an expired-card problem regardless of how it began.
+/// Deliberately a first-class table, not JSON inside Transaction.
+model PaymentAttempt {
+  id            String @id @default(cuid())
+  merchantId    String
+  transactionId String
+  customerId    String
+  /// Dataset identifier, e.g. "pa_000001".
+  sourceRef     String
+
+  amountPaise   Int
+  currency      String         @default("INR")
+  status        AttemptStatus
+  /// Required iff status == FAILED; NULL iff SUCCESS. Enforced by CHECK constraint.
+  failureReason FailureReason?
+  method        PaymentMethod
+
+  /// Contiguous 1..n within a transaction.
+  attemptNo          Int
+  /// NULL on the first attempt, otherwise the immediately preceding attempt.
+  retryOfAttemptId   String?
+  /// Provider payment id. Synthetic in seed data; real Razorpay id after execution.
+  gatewayRef         String?
+
+  occurredAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant           Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transaction        Transaction         @relation(fields: [transactionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  retryOf            PaymentAttempt?     @relation("AttemptRetryChain", fields: [retryOfAttemptId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  retriedBy          PaymentAttempt[]    @relation("AttemptRetryChain")
+  opportunityTargets OpportunityTarget[]
+  attributionRecords AttributionRecord[]
+
+  @@unique([merchantId, sourceRef])
+  @@unique([transactionId, attemptNo])
+  @@unique([retryOfAttemptId])
+  @@index([merchantId, status])
+  @@index([merchantId, failureReason])
+  @@index([transactionId])
+  @@index([merchantId, status, occurredAt])
+  @@map("payment_attempt")
+}
+
+// ---------------------------------------------------------------------------
+// Agent domain — observation and estimation
+// ---------------------------------------------------------------------------
+
+/// Detector output. Carries OBSERVED FACTS ONLY: counts and sums taken from the
+/// rows above. No probability, no projection — those belong to Estimate.
+model Opportunity {
+  id         String            @id @default(cuid())
+  merchantId String
+  type       OpportunityType
+  status     OpportunityStatus @default(OPEN)
+
+  detectorKey     String
+  detectorVersion String
+
+  affectedCustomerCount  Int
+  recoverableAmountPaise Int
+  /// Failure-reason breakdown and other counted evidence.
+  evidence               Json
+
+  /// The "as of" instant this run evaluated against.
+  referenceAt DateTime
+  detectedAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant      Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  targets       OpportunityTarget[]
+  estimates     Estimate[]
+  interventions Intervention[]
+
+  @@index([merchantId, status])
+  @@index([merchantId, type, detectedAt])
+  @@map("opportunity")
+}
+
+model OpportunityTarget {
+  id            String @id @default(cuid())
+  opportunityId String
+  customerId    String
+  transactionId String
+  /// The operative failed attempt — the last FAILED attempt in the chain.
+  paymentAttemptId String
+
+  recoverableAmountPaise Int
+
+  createdAt DateTime @default(now())
+
+  opportunity    Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentAttempt PaymentAttempt @relation(fields: [paymentAttemptId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([opportunityId, transactionId])
+  @@index([opportunityId])
+  @@index([customerId])
+  @@map("opportunity_target")
+}
+
+model Playbook {
+  id         String             @id @default(cuid())
+  merchantId String
+  key        String
+  name       String
+  description String?
+  actionType PlaybookActionType
+  defaultDiscountBps Int        @default(0)
+  channelCostPaise   Int        @default(0)
+  isActive   Boolean            @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant      Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  estimates     Estimate[]
+  interventions Intervention[]
+  stats         PlaybookStat[]
+
+  @@unique([merchantId, key])
+  @@index([merchantId, isActive])
+  @@map("playbook")
+}
+
+/// Deterministic scoring of one (opportunity, playbook) pair. Computed in
+/// TypeScript BEFORE any LLM call. The LLM ranks these rows; it never produces them.
+model Estimate {
+  id            String @id @default(cuid())
+  merchantId    String
+  opportunityId String
+  playbookId    String
+
+  expectedGrossPaise Int
+  discountCostPaise  Int
+  channelCostPaise   Int
+  gatewayFeePaise    Int
+  costPaise          Int
+  /// expectedGrossPaise - costPaise. May be negative; MIN_EXPECTED_NET blocks those.
+  expectedNetPaise   Int
+
+  /// Average recovery probability in BASIS POINTS (0-10000). Integer, so no
+  /// float ever enters the money path.
+  pRecoverAvgBps Int
+  confidence     ConfidenceLevel
+
+  /// Every input used, so the number is reproducible and auditable.
+  inputsSnapshot   Json
+  estimatorVersion String
+
+  createdAt DateTime @default(now())
+
+  merchant      Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  opportunity   Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  playbook      Playbook       @relation(fields: [playbookId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  interventions Intervention[]
+
+  @@unique([opportunityId, playbookId])
+  @@index([merchantId])
+  @@index([opportunityId])
+  @@map("estimate")
+}
+
+// ---------------------------------------------------------------------------
+// Decision and action
+// ---------------------------------------------------------------------------
+
+model Intervention {
+  id            String @id @default(cuid())
+  merchantId    String
+  opportunityId String
+  playbookId    String
+  estimateId    String
+
+  state         InterventionState @default(DRAFT)
+  reasoningMode ReasoningMode     @default(DETERMINISTIC_FALLBACK)
+
+  /// Prose explanation. Any figure it cites must match the Estimate row.
+  rationale       String?
+  customerMessage Json?
+
+  /// Optimistic lock. Every transition must supply the version it read, so two
+  /// approvers cannot both advance the same intervention.
+  version Int @default(0)
+
+  /// Embedded in the payment link so payments attribute back unambiguously.
+  /// Globally unique: it travels outside our database.
+  attributionRef String @unique
+
+  expiresAt  DateTime?
+  proposedAt DateTime?
+  approvedAt DateTime?
+  executedAt DateTime?
+  observedAt DateTime?
+  closedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant             Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  opportunity          Opportunity           @relation(fields: [opportunityId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  playbook             Playbook              @relation(fields: [playbookId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  estimate             Estimate              @relation(fields: [estimateId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  targets              InterventionTarget[]
+  guardrailEvaluations GuardrailEvaluation[]
+  approval             Approval?
+  executionAttempts    ExecutionAttempt[]
+  razorpayArtifacts    RazorpayArtifact[]
+  attributionRecords   AttributionRecord[]
+
+  @@index([merchantId, state])
+  @@index([merchantId, createdAt])
+  @@index([opportunityId])
+  @@map("intervention")
+}
+
+model InterventionTarget {
+  id             String @id @default(cuid())
+  interventionId String
+  customerId     String
+  transactionId  String
+
+  amountPaise Int
+  /// Per-target reference, so a multi-customer intervention still attributes
+  /// each payment to the right person. Globally unique: it leaves our system.
+  perTargetRef String @unique
+
+  createdAt DateTime @default(now())
+
+  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  transaction  Transaction  @relation(fields: [transactionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  executionAttempts ExecutionAttempt[]
+
+  @@unique([interventionId, transactionId])
+  @@index([interventionId])
+  @@map("intervention_target")
+}
+
+/// Versioned, never mutated. Editing the policy creates a new version.
+model GuardrailPolicy {
+  id          String  @id @default(cuid())
+  merchantId  String
+  version     Int
+  rules       Json
+  isActive    Boolean @default(false)
+  updatedById String?
+
+  createdAt DateTime @default(now())
+
+  merchant    Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  updatedBy   User?                 @relation(fields: [updatedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  evaluations GuardrailEvaluation[]
+
+  @@unique([merchantId, version])
+  @@index([merchantId, isActive])
+  @@map("guardrail_policy")
+}
+
+/// One row per (intervention, phase). PRE_APPROVAL is shown to the merchant;
+/// PRE_EXECUTION re-runs the same rules against fresh state immediately before
+/// the provider call, closing the time-of-check/time-of-use gap.
+model GuardrailEvaluation {
+  id             String            @id @default(cuid())
+  merchantId     String
+  interventionId String
+  policyId       String
+  policyVersion  Int
+  phase          GuardrailPhase
+  decision       GuardrailDecision
+  /// Per-rule results: observed vs limit, so the UI can explain the outcome.
+  ruleResults    Json
+
+  evaluatedAt DateTime @default(now())
+
+  merchant     Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  intervention Intervention    @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  policy       GuardrailPolicy @relation(fields: [policyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([interventionId, phase])
+  @@index([merchantId, evaluatedAt])
+  @@map("guardrail_evaluation")
+}
+
+/// The human gate. At most one decision per intervention, so `interventionId`
+/// is unique. A trigger requires an APPROVED row before any execution state.
+model Approval {
+  id             String           @id @default(cuid())
+  merchantId     String
+  interventionId String           @unique
+  userId         String
+  decision       ApprovalDecision
+  note           String?
+  /// Merchant edits to the drafted message, captured for the audit trail.
+  editedMessage  Json?
+  /// The Intervention.version this decision was taken against.
+  interventionVersion Int
+
+  decidedAt DateTime @default(now())
+
+  merchant     Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([merchantId, decidedAt])
+  @@index([userId])
+  @@map("approval")
+}
+
+/// One row per provider call. The idempotency key is persisted BEFORE the call
+/// is issued, so a crash between issue and response cannot double-act.
+model ExecutionAttempt {
+  id             String  @id @default(cuid())
+  merchantId     String
+  interventionId String
+  targetId       String?
+
+  attemptNo      Int
+  /// sha256(interventionId : targetId : attemptNo). Globally unique.
+  idempotencyKey String  @unique
+  status         ExecutionStatus @default(PENDING)
+
+  request        Json?
+  responseStatus Int?
+  response       Json?
+  error          String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  merchant     Merchant            @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  intervention Intervention        @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  target       InterventionTarget? @relation(fields: [targetId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  artifacts    RazorpayArtifact[]
+
+  @@unique([interventionId, attemptNo])
+  @@index([merchantId, status])
+  @@index([interventionId])
+  @@map("execution_attempt")
+}
+
+model RazorpayArtifact {
+  id                 String       @id @default(cuid())
+  merchantId         String
+  interventionId     String
+  executionAttemptId String?
+  artifactType       ArtifactType
+  /// Provider entity id, e.g. a payment link id.
+  providerEntityId   String
+  shortUrl           String?
+  amountPaise        Int
+  status             String
+  raw                Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant         Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  intervention     Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  executionAttempt ExecutionAttempt? @relation(fields: [executionAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([merchantId, providerEntityId])
+  @@index([interventionId])
+  @@map("razorpay_artifact")
+}
+
+// ---------------------------------------------------------------------------
+// Outcome
+// ---------------------------------------------------------------------------
+
+/// Raw provider event, stored verbatim before any processing. merchantId is
+/// nullable because an event may arrive before we can resolve its merchant.
+model WebhookEvent {
+  id              String  @id @default(cuid())
+  merchantId      String?
+  /// Provider's event id. Globally unique — this is the dedupe key.
+  providerEventId String  @unique
+  eventType       String
+  signatureValid  Boolean
+  rawBody         String
+  headers         Json
+
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  processingError String?
+
+  merchant           Merchant?           @relation(fields: [merchantId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  attributionRecords AttributionRecord[]
+
+  @@index([merchantId, eventType])
+  @@index([processedAt])
+  @@map("webhook_event")
+}
+
+/// Links a payment back to the intervention that caused it. Absence of a row
+/// means UNATTRIBUTED — a valid, visible outcome, never a silent guess.
+model AttributionRecord {
+  id             String @id @default(cuid())
+  merchantId     String
+  interventionId String
+  transactionId  String
+  paymentAttemptId String?
+  webhookEventId String?
+
+  method     AttributionMethod
+  confidence ConfidenceLevel
+  attributedAmountPaise Int
+  note       String?
+
+  attributedAt DateTime @default(now())
+
+  merchant       Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  intervention   Intervention    @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transaction    Transaction     @relation(fields: [transactionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentAttempt PaymentAttempt? @relation(fields: [paymentAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  webhookEvent   WebhookEvent?   @relation(fields: [webhookEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  /// A transaction is credited to an intervention at most once.
+  @@unique([interventionId, transactionId])
+  @@index([merchantId, attributedAt])
+  @@index([interventionId])
+  @@map("attribution_record")
+}
+
+/// Beta(alpha, beta) pseudo-counts per (playbook, failure reason, tier scope).
+/// The LEARN step increments these as outcomes land.
+///
+/// Stored as MILLI-units (value x 1000) so a prior of 18.8 is 18800. Integers
+/// keep updates exactly reproducible; floats would drift.
+model PlaybookStat {
+  id            String            @id @default(cuid())
+  merchantId    String
+  playbookId    String
+  failureReason FailureReason
+  tierScope     CustomerTierScope @default(ALL)
+
+  alphaMilli Int
+  betaMilli  Int
+
+  /// Set at seed time and never overwritten, so learned movement stays visible.
+  seededAlphaMilli Int
+  seededBetaMilli  Int
+  observationCount Int @default(0)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastUpdatedAt DateTime?
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  playbook Playbook @relation(fields: [playbookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([merchantId, playbookId, failureReason, tierScope])
+  @@index([merchantId])
+  @@map("playbook_stat")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/// Append-only, hash-chained. UPDATE is rejected unconditionally by a trigger;
+/// DELETE only under an explicit session flag. `hash` covers `prevHash`, so any
+/// retroactive edit breaks verification for every later row.
+model AuditLog {
+  id         String @id @default(cuid())
+  merchantId String
+  /// Monotonic per merchant, starting at 1.
+  seq        BigInt
+
+  actorType ActorType
+  actorId   String?
+
+  entityType String
+  entityId   String
+  action     String
+
+  before Json?
+  after  Json?
+
+  /// sha256(seq : prevHash : canonicalJson(payload)). Genesis prevHash is 64 zeros.
+  prevHash String
+  hash     String @unique
+
+  createdAt DateTime @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([merchantId, seq])
+  @@index([merchantId, entityType, entityId])
+  @@index([merchantId, createdAt])
+  @@map("audit_log")
+}
