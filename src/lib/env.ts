@@ -34,6 +34,14 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
 
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+
+  /**
+   * Reasoning-model credential. OPTIONAL by design: with no key the reasoner
+   * falls back deterministically and says so, rather than failing. Read only
+   * inside src/integrations/llm, never logged, never placed in a prompt.
+   */
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5"),
 });
 
 export type Env = z.infer<typeof envSchema>;

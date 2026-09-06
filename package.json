@@ -14,17 +14,20 @@
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx prisma/seed.ts",
-    "db:validate": "tsx scripts/validate-db.ts",
+    "db:validate": "tsx --conditions=react-server scripts/validate-db.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run db:validate",
     "detector": "tsx --conditions=react-server scripts/run-detector.ts",
-    "estimator": "tsx --conditions=react-server scripts/run-estimator.ts"
+    "estimator": "tsx --conditions=react-server scripts/run-estimator.ts",
+    "reasoner": "tsx --conditions=react-server scripts/run-reasoner.ts",
+    "reasoner:demo": "tsx --conditions=react-server scripts/run-reasoner.ts --scripted"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "@paralleldrive/cuid2": "^3.3.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
@@ -37,7 +40,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.5",
     "@types/node": "^26.4.1",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",

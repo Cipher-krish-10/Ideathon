@@ -187,6 +187,21 @@ enum AttributionMethod {
   MANUAL
 }
 
+/// Outcome of validating one LLM response. Recorded on every call, including
+/// the failures, because a demo that cannot show its rejections cannot claim
+/// the model is non-authoritative.
+enum LlmValidationOutcome {
+  VALID
+  EMPTY_RESPONSE
+  MALFORMED_JSON
+  SCHEMA_INVALID
+  UNKNOWN_PLAYBOOK
+  NUMERIC_HALLUCINATION
+  UNSUPPORTED_MESSAGE_CLAIM
+  CONFIDENCE_OVERCLAIM
+  PROVIDER_ERROR
+}
+
 enum ActorType {
   SYSTEM
   AGENT
@@ -233,6 +248,7 @@ model Merchant {
   razorpayArtifacts    RazorpayArtifact[]
   webhookEvents        WebhookEvent[]
   attributionRecords   AttributionRecord[]
+  llmCalls             LlmCall[]
   playbookStats        PlaybookStat[]
   auditLogs            AuditLog[]
 
@@ -444,6 +460,7 @@ model Opportunity {
   targets       OpportunityTarget[]
   estimates     Estimate[]
   interventions Intervention[]
+  llmCalls      LlmCall[]
 
   /// Idempotency key for detector runs. Re-running the same detector version
   /// against the same reference instant must update or reuse one row, never
@@ -596,6 +613,7 @@ model Intervention {
   executionAttempts    ExecutionAttempt[]
   razorpayArtifacts    RazorpayArtifact[]
   attributionRecords   AttributionRecord[]
+  llmCalls             LlmCall[]
 
   @@index([merchantId, state])
   @@index([merchantId, createdAt])
@@ -616,9 +634,14 @@ model InterventionTarget {
 
   createdAt DateTime @default(now())
 
+  // Cascade, for the same reason as OpportunityTarget: a target is DERIVED
+  // data, recomputable from the opportunity, and meaningless once the row it
+  // points at is gone. Restrict made a merchant undeletable the moment a
+  // proposal existed. The durable record of what was decided is the
+  // append-only audit log, not this table.
   intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  transaction  Transaction  @relation(fields: [transactionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transaction  Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   executionAttempts ExecutionAttempt[]
 
@@ -842,6 +865,53 @@ model PlaybookStat {
   @@unique([merchantId, playbookId, failureReason, tierScope])
   @@index([merchantId])
   @@map("playbook_stat")
+}
+
+/// One call to the reasoning model, recorded whether it succeeded or not.
+///
+/// The prompt is built from AGGREGATE evidence only -- no customer name, email,
+/// phone, or per-customer amount ever reaches the model -- so storing it whole
+/// carries no PII. Credentials never appear in it.
+model LlmCall {
+  id             String  @id @default(cuid())
+  merchantId     String
+  opportunityId  String?
+  interventionId String?
+
+  provider String
+  model    String
+  /// sha256 of the exact prompt sent, so an identical prompt is recognisable
+  /// without diffing the text.
+  promptHash String
+  promptText String
+
+  /// Verbatim model output, kept even when validation rejected it.
+  rawResponse  String?
+  parsedOutput Json?
+
+  attemptNo         Int                  @default(1)
+  /// True only for a response that passed every validation gate.
+  isValid           Boolean
+  validationOutcome LlmValidationOutcome
+  /// Per-check detail: which gate failed, and on what value.
+  validationResult  Json
+
+  latencyMs    Int
+  inputTokens  Int?
+  outputTokens Int?
+  costPaise    Int?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  merchant     Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  opportunity  Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([merchantId, createdAt])
+  @@index([opportunityId])
+  @@index([interventionId])
+  @@map("llm_call")
 }
 
 // ---------------------------------------------------------------------------

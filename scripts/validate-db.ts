@@ -413,16 +413,65 @@ async function main() {
     SELECT e."id" FROM "estimate" e
       LEFT JOIN "opportunity" o ON o."id" = e."opportunityId" WHERE o."id" IS NULL`);
 
-  // These belong to phases that do not exist yet. A non-zero count would mean
-  // something wrote a money action before it was built.
+  // Interventions are produced by the reasoner. Provenance again -- and, more
+  // importantly, NONE may have advanced past the human gate, because approval
+  // and execution do not exist yet.
+  const interventions = await prisma.intervention.findMany({ where });
+  check(
+    "reasoner: every intervention records how it was reasoned",
+    interventions.every((i) => Boolean(i.reasoningMode) && Boolean(i.attributionRef)),
+  );
+  check(
+    "safety: no intervention has advanced past PROPOSED",
+    interventions.every((i) =>
+      ["DRAFT", "PROPOSED", "PENDING_APPROVAL", "REJECTED", "EXPIRED", "CANCELLED",
+       "GUARDRAIL_BLOCKED"].includes(i.state),
+    ),
+    interventions.filter((i) => i.state === "EXECUTING" || i.state === "EXECUTED").length +
+      " in an execution state",
+  );
+  check(
+    "safety: every intervention cites a deterministic estimate",
+    interventions.every((i) => Boolean(i.estimateId)),
+  );
+  await expectNoRows("integrity: every intervention resolves its estimate", prisma.$queryRaw`
+    SELECT i."id" FROM "intervention" i
+      LEFT JOIN "estimate" e ON e."id" = i."estimateId" WHERE e."id" IS NULL`);
+
+  // Every LLM call is recorded, valid or not, and none may carry a credential.
+  const llmCalls = await prisma.llmCall.findMany({ where });
+  check(
+    "reasoner: every LLM call records a prompt hash and outcome",
+    llmCalls.every((c) => c.promptHash.length === 64 && Boolean(c.validationOutcome)),
+  );
+  check(
+    "security: no stored prompt contains an API credential",
+    llmCalls.every((c) => !/sk-ant-|Bearer\s/i.test(c.promptText)),
+  );
+  check(
+    "security: no stored prompt contains customer contact details",
+    llmCalls.every((c) => !/@|\+91/.test(c.promptText)),
+  );
+
+  // Money actions. These remain strictly zero until the approval and execution
+  // phases exist.
   for (const [label, count] of [
-    ["interventions", await prisma.intervention.count({ where })],
     ["approvals", await prisma.approval.count({ where })],
     ["execution attempts", await prisma.executionAttempt.count({ where })],
+    ["razorpay artifacts", await prisma.razorpayArtifact.count({ where })],
     ["attribution records", await prisma.attributionRecord.count({ where })],
   ] as const) {
     expectEqual(`not yet implemented: no ${label} exist`, count, 0);
   }
+
+  // The audit chain must verify.
+  const { verifyAuditChain } = await import("../src/server/audit/audit-logger.js");
+  const chain = await verifyAuditChain(prisma, merchantId);
+  check(
+    "audit: hash chain verifies end to end",
+    chain.valid,
+    chain.reason ?? `broken at seq ${chain.brokenAtSeq}`,
+  );
 
   // ---- Report ---------------------------------------------------------------
   console.log(`checks run: ${checksRun}`);

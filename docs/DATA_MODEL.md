@@ -282,13 +282,32 @@ immutable, so those modifiers are declared as versioned configuration outside
 plausible calibration constants, not measured effects, and should move into
 merchant configuration when that file is next regenerated.
 
-## 10. Deliberate omissions
+## 10. Phase 3 amendments — LLM Reasoner
 
-Not built yet:
+**`LlmCall` added.** Every reasoning call is recorded, successful or not: a
+rejected response is the evidence that validation is working, so it is stored as
+deliberately as a valid one. A CHECK constraint keeps `isValid` and
+`validationOutcome` in agreement. The stored prompt is PII-free by construction
+— the input builder can only see aggregates and estimator output — and holds no
+credential.
 
-LLM reasoning and `LlmCall` · guardrail engine · approval UI · Razorpay adapter · webhook ingestion · attribution engine · audit hash-chain *writer* (the table and its immutability exist; the append helper arrives with the first thing that emits events) · authentication and `Session`.
+**Audit writer implemented.** `src/server/audit/audit-logger.ts` appends
+hash-chained entries under a per-merchant advisory lock, and `verifyAuditChain`
+recomputes the chain end to end. The table and its immutability triggers existed
+from Phase 0; this is the first phase that emits events.
 
-## 11. Known limitations
+**`InterventionTarget` foreign keys moved from `Restrict` to `Cascade`** — the
+latent defect flagged in the Phase 1 notes, reached because the reasoner
+populates that table. Same reasoning as `OpportunityTarget`.
+
+> `AttributionRecord` still carries `Restrict` FKs to `Customer`/`Transaction`
+> and will hit the identical problem once the attribution phase writes rows.
+
+## 11. Deliberate omissions
+
+Not built yet: and `LlmCall` · guardrail engine · approval UI · Razorpay adapter · webhook ingestion · attribution engine · audit hash-chain *writer* (the table and its immutability exist; the append helper arrives with the first thing that emits events) · authentication and `Session`.
+
+## 12. Known limitations
 
 - **`migrate reset` was not run.** Prisma 7 blocks destructive resets initiated by an AI agent without explicit user consent, which is correct behaviour. Both migrations were applied incrementally and `prisma migrate status` reports the database in sync; a from-scratch rebuild should be confirmed by a human running `npx prisma migrate reset --force`.
 - **`Int` caps a single monetary column at ₹2.14 crore.** Fine for this dataset; documented in §2 with the `BigInt` migration path.

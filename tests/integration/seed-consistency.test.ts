@@ -138,9 +138,12 @@ describe("seed consistency with the approved dataset", () => {
       );
     }
 
-    // These belong to phases that do not exist yet. Any row would mean
-    // something wrote a money action before it was built.
-    expect(await prisma.intervention.count({ where })).toBe(0);
+    // Interventions come from the reasoner; none may have passed the human gate.
+    const interventions = await prisma.intervention.findMany({ where });
+    for (const intervention of interventions) {
+      expect(intervention.reasoningMode).toBeTruthy();
+      expect(["DRAFT", "PROPOSED", "PENDING_APPROVAL"]).toContain(intervention.state);
+    }
     expect(await prisma.approval.count({ where })).toBe(0);
     expect(await prisma.executionAttempt.count({ where })).toBe(0);
     expect(await prisma.attributionRecord.count({ where })).toBe(0);
