@@ -57,7 +57,37 @@ const envSchema = z.object({
    * real reasoning.
    */
   LLM_PROVIDER: z.enum(["auto", "anthropic", "groq", "none"]).default("auto"),
-});
+
+  /**
+   * Payment execution. Defaults to the FAKE provider: enabling real calls has
+   * to be a deliberate act, never something that happens because a variable
+   * was left unset.
+   */
+  PAYMENT_PROVIDER: z.enum(["fake", "razorpay"]).default("fake"),
+
+  /**
+   * Razorpay credentials. Read ONLY inside src/integrations/razorpay.
+   *
+   * RAZORPAY_MODE has NO DEFAULT and must be the literal "test". Razorpay does
+   * not document a way to tell a test key from a live one, so the mode gate is
+   * explicit configuration that fails closed rather than a guess at a prefix.
+   */
+  RAZORPAY_KEY_ID: z.string().min(1).optional(),
+  RAZORPAY_KEY_SECRET: z.string().min(1).optional(),
+  RAZORPAY_MODE: z.literal("test").optional(),
+})
+  .refine(
+    (env) =>
+      env.PAYMENT_PROVIDER !== "razorpay" ||
+      (Boolean(env.RAZORPAY_KEY_ID) && Boolean(env.RAZORPAY_KEY_SECRET) &&
+       env.RAZORPAY_MODE === "test"),
+    {
+      message:
+        'PAYMENT_PROVIDER="razorpay" requires RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, ' +
+        'and RAZORPAY_MODE="test". Refusing to start without all three.',
+      path: ["PAYMENT_PROVIDER"],
+    },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 

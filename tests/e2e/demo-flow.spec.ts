@@ -39,18 +39,21 @@ async function openPendingPacket(page: import("@playwright/test").Page) {
 test.describe("RevenuePilot demo flow", () => {
   test("test mode banner is always visible", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("Razorpay Test Mode")).toBeVisible();
+    // The banner specifically, not any prose that mentions test mode.
+    await expect(page.locator(".test-banner")).toContainText("Razorpay Test Mode");
+    await expect(page.locator(".test-banner")).toContainText("no live money can move");
   });
 
   test("command centre shows the opportunity without calling it recovered", async ({ page }) => {
     resetDemo();
     await page.goto("/");
 
-    await expect(page.getByText("₹5,14,274.00")).toBeVisible();
+    await expect(page.getByText("₹5,14,274.00").first()).toBeVisible();
     await expect(page.getByText("26", { exact: true }).first()).toBeVisible();
-    // Potential value must never be presented as money already earned.
+    // Potential and realised value must be visibly different things.
     await expect(page.getByText("Potential — not yet recovered")).toBeVisible();
-    await expect(page.getByText("Nothing has executed yet")).toBeVisible();
+    await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
+    await expect(page.getByText("Realised — confirmed by payment events")).toBeVisible();
   });
 
   test("run agent produces a proposal", async ({ page }) => {
@@ -101,6 +104,43 @@ test.describe("RevenuePilot demo flow", () => {
     await page.reload();
     await expect(page.getByText("APPROVED").first()).toBeVisible();
     await expect(page.getByTestId("not-decidable")).toBeVisible();
+  });
+
+  test("EXECUTE: approved intervention creates a payment link, and says it is not revenue", async ({ page }) => {
+    // Runs against the FAKE provider: PAYMENT_PROVIDER defaults to "fake", so
+    // the E2E suite never calls Razorpay.
+    resetDemo();
+    await openPendingPacket(page);
+
+    await page.getByTestId("approve-button").click();
+    await expect(page.getByTestId("approved-banner")).toBeVisible({ timeout: 20_000 });
+    await page.reload();
+
+    // Approved, not yet acted on.
+    const executionCard = page.getByTestId("execution-card");
+    await expect(executionCard).toBeVisible();
+    await expect(executionCard.getByText("READY TO EXECUTE")).toBeVisible();
+
+    await page.getByTestId("execute-button").click();
+    await expect(page.getByTestId("executed-banner")).toBeVisible({ timeout: 30_000 });
+    // The distinction the whole phase turns on.
+    await expect(page.getByTestId("executed-banner")).toContainText("NOT");
+
+    await page.reload();
+    await expect(page.getByText("OBSERVING").first()).toBeVisible();
+    await expect(page.getByTestId("artifact-table")).toBeVisible();
+    await expect(page.getByTestId("payment-link").first()).toBeVisible();
+    await expect(page.getByText("awaiting payment").first()).toBeVisible();
+    await expect(
+      page.getByText("Payment link created — revenue has NOT yet been recovered."),
+    ).toBeVisible();
+  });
+
+  test("recovered revenue stays at zero after execution", async ({ page }) => {
+    await page.goto("/");
+    // Executed actions may be non-zero; realised revenue may not.
+    await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
+    await expect(page.getByText("Realised — confirmed by payment events")).toBeVisible();
   });
 
   test("merchant can reject", async ({ page }) => {

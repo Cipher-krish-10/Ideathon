@@ -37,25 +37,33 @@ export const TERMINAL_STATES: readonly InterventionState[] = [
 ];
 
 /**
- * Legal transitions for THIS phase.
+ * Legal transitions.
  *
- * APPROVED intentionally leads only to GUARDRAIL_BLOCKED. Approval is not
- * permission to act: the executor must clear PRE_EXECUTION guardrails, and
- * until that component exists an approved intervention simply waits.
+ * APPROVED does not lead straight to EXECUTED. The executor must pass through
+ * EXECUTING, having cleared PRE_EXECUTION guardrails first: approval is a
+ * human's consent, not permission to skip the final check.
+ *
+ * EXECUTED leads to OBSERVING, which is where an intervention waits for a
+ * payment that may never come. Nothing here reaches CONVERTED — that requires
+ * a real payment event, and belongs to the attribution phase.
  */
 export const ALLOWED_TRANSITIONS: Readonly<Record<InterventionState, readonly InterventionState[]>> = {
   DRAFT: ["PROPOSED", "CANCELLED"],
   PROPOSED: ["PENDING_APPROVAL", "GUARDRAIL_BLOCKED", "CANCELLED", "EXPIRED"],
   PENDING_APPROVAL: ["APPROVED", "REJECTED", "EXPIRED", "CANCELLED", "GUARDRAIL_BLOCKED"],
-  APPROVED: ["GUARDRAIL_BLOCKED"],
+  APPROVED: ["EXECUTING", "GUARDRAIL_BLOCKED", "CANCELLED"],
   GUARDRAIL_BLOCKED: [],
   REJECTED: [],
   EXPIRED: [],
   CANCELLED: [],
-  // Reserved for the execution phase; unreachable from here.
-  EXECUTING: [],
-  EXECUTED: [],
-  EXECUTION_FAILED: [],
+  EXECUTING: ["EXECUTED", "EXECUTION_FAILED"],
+  // EXECUTED means the action was created at the provider. It does NOT mean
+  // money was recovered; OBSERVING is where it waits to find out.
+  EXECUTED: ["OBSERVING"],
+  // A bounded retry may re-enter EXECUTING, but only via the executor, which
+  // re-runs the guardrails first.
+  EXECUTION_FAILED: ["EXECUTING", "CANCELLED"],
+  // CONVERTED / NOT_CONVERTED require a real payment event: attribution phase.
   OBSERVING: [],
   CONVERTED: [],
   NOT_CONVERTED: [],

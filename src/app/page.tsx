@@ -17,7 +17,9 @@ export default async function CommandCentre() {
       <h1>Command Centre</h1>
       <p className="subtitle">
         Failed-payment recovery for Nimbus Commerce. Every figure below is computed
-        deterministically and traces to a database row.
+        deterministically and traces to a database row. <strong>Potential</strong> and{" "}
+        <strong>expected</strong> values are projections; <strong>recovered</strong> revenue
+        counts only payments confirmed by a real payment event.
       </p>
 
       <div className="grid grid-4" style={{ marginBottom: 22 }}>
@@ -39,8 +41,35 @@ export default async function CommandCentre() {
         </div>
         <div className="metric">
           <div className="label">Recovered revenue</div>
-          <div className="value">{formatRupees(metrics.recoveredAmountPaise)}</div>
-          <div className="note">Nothing has executed yet</div>
+          <div className="value" data-testid="recovered-revenue">
+            {formatRupees(metrics.recoveredAmountPaise)}
+          </div>
+          {/* Sourced ONLY from attribution records written by real payment
+              events. Creating a payment link does not move this number. */}
+          <div className="note">Realised — confirmed by payment events</div>
+        </div>
+      </div>
+
+      <div className="grid grid-4" style={{ marginBottom: 22 }}>
+        <div className="metric">
+          <div className="label">Expected net</div>
+          <div className="value">{formatRupees(metrics.expectedNetPaise)}</div>
+          <div className="note">Estimate on approved actions — a projection</div>
+        </div>
+        <div className="metric">
+          <div className="label">Executed actions</div>
+          <div className="value" data-testid="executed-actions">{metrics.executedInterventions}</div>
+          <div className="note">Interventions sent to Razorpay Test Mode</div>
+        </div>
+        <div className="metric">
+          <div className="label">Payment links created</div>
+          <div className="value">{metrics.paymentLinksCreated}</div>
+          <div className="note">Awaiting payment</div>
+        </div>
+        <div className="metric">
+          <div className="label">Value awaiting payment</div>
+          <div className="value">{formatRupees(metrics.paymentLinkValuePaise)}</div>
+          <div className="note">Link value — not yet collected</div>
         </div>
       </div>
 

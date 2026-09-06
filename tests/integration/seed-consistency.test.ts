@@ -96,10 +96,14 @@ describe("seed consistency with the approved dataset", () => {
     expect(await prisma.playbook.count({ where: { merchantId } })).toBe(3);
     expect(await prisma.playbookStat.count({ where: { merchantId } })).toBe(15);
 
-    const policy = await prisma.guardrailPolicy.findFirst({ where: { merchantId, version: 1 } });
-    expect(policy).not.toBeNull();
-    expect(policy?.isActive).toBe(true);
-    expect(Object.keys(policy?.rules as Record<string, unknown>)).toHaveLength(10);
+    // The seed creates version 1 with all ten rules. Later versions are
+    // legitimate — a merchant editing policy is the point of the Policies page —
+    // so the invariant is that v1 exists and exactly one version is active.
+    const policies = await prisma.guardrailPolicy.findMany({ where: { merchantId } });
+    const v1 = policies.find((policy) => policy.version === 1);
+    expect(v1).toBeDefined();
+    expect(Object.keys(v1?.rules as Record<string, unknown>)).toHaveLength(10);
+    expect(policies.filter((policy) => policy.isActive)).toHaveLength(1);
 
     const users = await prisma.user.findMany({ where: { merchantId } });
     expect(users.map((u) => u.role).sort()).toEqual(["ADMIN", "APPROVER"]);
@@ -138,12 +142,25 @@ describe("seed consistency with the approved dataset", () => {
       );
     }
 
-    // Interventions come from the reasoner; none may have passed the human gate.
+    // Interventions come from the reasoner and may legitimately have been
+    // approved and executed by a demo run. What must NOT exist is an outcome
+    // state: those require a real payment event, which no phase can yet produce.
     const interventions = await prisma.intervention.findMany({ where });
     for (const intervention of interventions) {
       expect(intervention.reasoningMode).toBeTruthy();
-      expect(["DRAFT", "PROPOSED", "PENDING_APPROVAL"]).toContain(intervention.state);
+      expect(["CONVERTED", "NOT_CONVERTED", "LEARNED"]).not.toContain(intervention.state);
+      // Any intervention past the gate must have a recorded approval.
+      if (["APPROVED", "EXECUTING", "EXECUTED", "OBSERVING"].includes(intervention.state)) {
+        const approval = await prisma.approval.findUnique({
+          where: { interventionId: intervention.id },
+        });
+        expect(approval?.decision).toBe("APPROVED");
+      }
     }
+
+    // Recovered revenue is realised money only. Nothing before the attribution
+    // phase may write one of these.
+    expect(await prisma.attributionRecord.count({ where })).toBe(0);
     expect(await prisma.approval.count({ where })).toBe(0);
     expect(await prisma.executionAttempt.count({ where })).toBe(0);
     expect(await prisma.attributionRecord.count({ where })).toBe(0);

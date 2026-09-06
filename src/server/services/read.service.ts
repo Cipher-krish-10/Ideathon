@@ -145,6 +145,8 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
         },
       },
       guardrailEvaluations: { orderBy: { evaluatedAt: "asc" } },
+      razorpayArtifacts: { orderBy: { createdAt: "asc" } },
+      executionAttempts: { orderBy: { attemptNo: "asc" } },
       approval: { include: { user: { select: { name: true, email: true, role: true } } } },
       _count: { select: { targets: true } },
     },
@@ -240,6 +242,30 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       editedAt: typeof message.editedAt === "string" ? message.editedAt : null,
     },
 
+    // "created" is the LINK's status. It is not payment, and not recovery.
+    execution: {
+      artifacts: intervention.razorpayArtifacts.map((artifact) => ({
+        id: artifact.id,
+        providerEntityId: artifact.providerEntityId,
+        shortUrl: artifact.shortUrl,
+        amountPaise: artifact.amountPaise,
+        status: artifact.status,
+        createdAt: artifact.createdAt.toISOString(),
+      })),
+      attempts: intervention.executionAttempts.map((attempt) => ({
+        attemptNo: attempt.attemptNo,
+        status: attempt.status,
+        responseStatus: attempt.responseStatus,
+        error: attempt.error,
+        // Truncated: enough to prove idempotency without printing a whole hash.
+        idempotencyKey: `${attempt.idempotencyKey.slice(0, 12)}…`,
+        startedAt: attempt.startedAt.toISOString(),
+      })),
+      totalAmountPaise: intervention.razorpayArtifacts.reduce(
+        (sum, artifact) => sum + artifact.amountPaise, 0,
+      ),
+    },
+
     approval: intervention.approval
       ? {
           decision: intervention.approval.decision,
@@ -276,7 +302,8 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
 export async function getDashboardMetrics(merchantId: string) {
   const [
     openOpportunities, pendingApprovals, approved, blocked, rejected,
-    opportunityTotals, attributed, auditChain,
+    opportunityTotals, attributed, auditChain, executedInterventions,
+    artifactTotals, expectedNet,
   ] = await Promise.all([
     prisma.opportunity.count({ where: { merchantId, status: "OPEN" } }),
     prisma.intervention.count({ where: { merchantId, state: "PENDING_APPROVAL" } }),
@@ -291,6 +318,16 @@ export async function getDashboardMetrics(merchantId: string) {
       where: { merchantId }, _sum: { attributedAmountPaise: true },
     }),
     verifyAuditChain(prisma, merchantId),
+    prisma.intervention.count({
+      where: { merchantId, state: { in: ["EXECUTED", "OBSERVING", "CONVERTED", "NOT_CONVERTED", "LEARNED"] } },
+    }),
+    prisma.razorpayArtifact.aggregate({
+      where: { merchantId }, _sum: { amountPaise: true }, _count: { _all: true },
+    }),
+    prisma.estimate.aggregate({
+      where: { merchantId, interventions: { some: { state: { in: ["APPROVED", "EXECUTING", "EXECUTED", "OBSERVING"] } } } },
+      _sum: { expectedNetPaise: true },
+    }),
   ]);
 
   return {
@@ -302,8 +339,15 @@ export async function getDashboardMetrics(merchantId: string) {
     // POTENTIAL, not realised. Labelled as such everywhere it is shown.
     recoverableAmountPaise: opportunityTotals._sum.recoverableAmountPaise ?? 0,
     qualifyingCustomers: opportunityTotals._sum.affectedCustomerCount ?? 0,
-    // Zero until the execution and attribution phases exist. Never inferred
-    // from expected value.
+    // Actions actually created at the provider. NOT revenue.
+    executedInterventions,
+    paymentLinksCreated: artifactTotals._count._all,
+    paymentLinkValuePaise: artifactTotals._sum.amountPaise ?? 0,
+    // A projection from the estimator, on approved-or-later interventions.
+    expectedNetPaise: expectedNet._sum.expectedNetPaise ?? 0,
+    // REALISED revenue. Sourced only from AttributionRecord, which is written
+    // by the attribution phase from real payment events. Creating a payment
+    // link does not move this, and neither does approving one.
     recoveredAmountPaise: attributed._sum.attributedAmountPaise ?? 0,
     auditVerified: auditChain.valid,
     auditEntryCount: auditChain.entryCount,

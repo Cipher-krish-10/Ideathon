@@ -24,7 +24,8 @@
     "reasoner:demo": "tsx --conditions=react-server scripts/run-reasoner.ts --scripted",
     "demo:setup": "tsx --conditions=react-server scripts/demo-setup.ts",
     "demo:reset": "npm run db:seed && npm run demo:setup",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "razorpay:smoke": "tsx --conditions=react-server scripts/test-razorpay.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

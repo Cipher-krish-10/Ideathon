@@ -1,6 +1,6 @@
 # RevenuePilot — Demo Script
 
-**Runtime:** ~4 minutes. **Mode:** Razorpay Test Mode. **Nothing in this demo moves money** — the execution phase does not exist yet.
+**Runtime:** ~5 minutes. **Mode:** Razorpay Test Mode. **No money is recovered in this demo** — a payment link is created and left awaiting payment. Attribution is Phase 6.
 
 ---
 
@@ -11,6 +11,19 @@ npm run db:seed          # restore the approved dataset
 npm run demo:setup       # detector → estimator → reasoner → guardrails
 npm run dev              # http://localhost:3000
 ```
+
+**Execution provider.** `PAYMENT_PROVIDER` defaults to `fake`, which creates realistic
+artifacts with no external call — fine for rehearsal. For **real Razorpay Test Mode**, add
+all three to `.env` (the adapter refuses to start without every one of them):
+
+```bash
+PAYMENT_PROVIDER="razorpay"
+RAZORPAY_KEY_ID="rzp_test_..."
+RAZORPAY_KEY_SECRET="..."
+RAZORPAY_MODE="test"
+```
+
+Verify before presenting: `PAYMENT_PROVIDER=razorpay npm run razorpay:smoke`
 
 `demo:setup` prints the decision packet URL.
 
@@ -116,7 +129,43 @@ Reload: state is `APPROVED`, controls are gone, the audit timeline has grown.
 
 ---
 
-## 7. THE FAILURE BEAT — guardrails block a real approval *(50s)*
+## 7. Execute — Razorpay Test Mode *(50s)*
+
+The **Execution** card now reads **READY TO EXECUTE**.
+
+> "Approval was a human saying yes. It is not permission to skip the last check — the
+> executor re-runs the pre-execution guardrails against current state before anything
+> leaves the building."
+
+Click **EXECUTE**.
+
+**Green banner:** *Executed — payment link(s) created in Razorpay Test Mode.*
+> **Payment link created — revenue has NOT yet been recovered.**
+
+The artifact table appears: **Razorpay Test Payment Link** (short URL), amount, status
+**awaiting payment**, and the provider id (`plink_…`). The intervention is now `OBSERVING`.
+
+**Open the short URL** in a new tab to show a real Razorpay Test Mode checkout page.
+**Stop there.** Do not complete the payment as part of this phase's story — and if you do,
+say plainly that nothing in RevenuePilot has noticed yet, because webhook ingestion and
+attribution are Phase 6.
+
+Point at the **Execution attempts** list: each attempt carries its own idempotency key,
+persisted *before* the call went out.
+
+> "If that response had been lost, we would not create a second link. The executor asks
+> Razorpay whether the first one landed, using the reference id, before it retries."
+
+Now return to `/` — **Executed actions** is 1, **Payment links created** is 1, value
+awaiting payment is non-zero, and **Recovered revenue is still ₹0.00.**
+
+> "Executed means the action exists at Razorpay. It does not mean the merchant got paid.
+> Recovered revenue moves only when a real payment event confirms it — and that is the
+> next phase."
+
+---
+
+## 8. THE FAILURE BEAT — guardrails block a real approval *(50s)*
 
 This is the strongest moment. **Reset first:**
 
@@ -147,7 +196,7 @@ npm run db:seed && npm run demo:setup -- --block
 
 ---
 
-## 8. Audit *(20s)*
+## 9. Audit *(20s)*
 
 Open `/audit`.
 
@@ -159,7 +208,11 @@ Open `/audit`.
 
 ## Closing line
 
-> "Data → opportunity → deterministic options → AI recommendation → guardrails → human approval. The model reasoned about the trade-off and explained it. It never computed a rupee, never chose an action it wasn't offered, and never got past a human. No money has moved."
+> "Data → opportunity → deterministic options → AI recommendation → guardrails → human
+> approval → execution in Razorpay Test Mode. The model reasoned about the trade-off and
+> explained it. It never computed a rupee, never chose an action it wasn't offered, and
+> never got past a human. A payment link now exists and is awaiting payment — and until a
+> real payment event says otherwise, recovered revenue stays at zero."
 
 ---
 
@@ -176,6 +229,12 @@ Open `/audit`.
 ## Verification
 
 ```bash
-npm run verify      # typecheck, lint, 300 tests, 105 DB checks
-npm run test:e2e    # 9 Playwright tests including the failure beat
+npm run verify      # typecheck, lint, 344 tests, DB checks
+npm run test:e2e    # 11 Playwright tests, including execution and the failure beat
+npm run razorpay:smoke                       # config check (fake by default)
+PAYMENT_PROVIDER=razorpay npm run razorpay:smoke   # one real Test Mode link
 ```
+
+**Phase boundary.** Execution ends at a payment link in `created` status. Webhook
+ingestion, payment confirmation, and revenue attribution are **Phase 6**. Nothing in this
+build claims a rupee was recovered.

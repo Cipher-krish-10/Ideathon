@@ -31,13 +31,33 @@ describe("intervention state machine", () => {
       expect(canTransition("APPROVED", "EXECUTED").allowed).toBe(false);
     });
 
-    it("declares no inbound edge to any execution state", () => {
+    it("lets ONLY an approved intervention reach an execution state", () => {
+      // Execution states exist now, but the human gate cannot be bypassed:
+      // nothing before APPROVED has an edge into one.
       const executionStates: InterventionState[] = [
         "EXECUTING", "EXECUTED", "EXECUTION_FAILED", "OBSERVING",
-        "CONVERTED", "NOT_CONVERTED", "LEARNED",
       ];
-      for (const [, targets] of Object.entries(ALLOWED_TRANSITIONS)) {
+      const preApprovalStates: InterventionState[] = [
+        "DRAFT", "PROPOSED", "PENDING_APPROVAL",
+      ];
+      for (const from of preApprovalStates) {
         for (const state of executionStates) {
+          expect(ALLOWED_TRANSITIONS[from]).not.toContain(state);
+        }
+      }
+      // EXECUTING is reachable only from APPROVED, or from a bounded retry.
+      const intoExecuting = Object.entries(ALLOWED_TRANSITIONS)
+        .filter(([, targets]) => targets.includes("EXECUTING"))
+        .map(([from]) => from)
+        .sort();
+      expect(intoExecuting).toEqual(["APPROVED", "EXECUTION_FAILED"]);
+    });
+
+    it("declares no inbound edge to any outcome state", () => {
+      // CONVERTED, NOT_CONVERTED and LEARNED require a real payment event and
+      // belong to the attribution phase. Creating a payment link is not one.
+      for (const [, targets] of Object.entries(ALLOWED_TRANSITIONS)) {
+        for (const state of ["CONVERTED", "NOT_CONVERTED", "LEARNED"] as const) {
           expect(targets).not.toContain(state);
         }
       }

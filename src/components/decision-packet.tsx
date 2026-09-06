@@ -45,6 +45,17 @@ export interface DecisionPacketData {
   guardrails: GuardrailEvaluation[];
   customerMessage: { subject: string; body: string; editedAt: string | null };
   approval: { decision: string; note: string | null; decidedAt: string; approver: string } | null;
+  execution: {
+    artifacts: {
+      id: string; providerEntityId: string; shortUrl: string;
+      amountPaise: number; status: string; createdAt: string;
+    }[];
+    attempts: {
+      attemptNo: number; status: string; responseStatus: number | null;
+      error: string | null; idempotencyKey: string; startedAt: string;
+    }[];
+    totalAmountPaise: number;
+  };
   reasoning: {
     id: string; provider: string; model: string; attemptNo: number; isValid: boolean;
     outcome: string; latencyMs: number; issues: { field: string; message: string }[];
@@ -61,10 +72,16 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<
     { kind: "blocked"; rules: { ruleId: string; message: string }[] }
-    | { kind: "approved" } | { kind: "rejected" } | { kind: "error"; message: string } | null
+    | { kind: "approved" } | { kind: "rejected" }
+    | { kind: "executed"; count: number } | { kind: "executionFailed"; message: string }
+    | { kind: "error"; message: string } | null
   >(null);
 
   const decidable = DECIDABLE_STATES.includes(packet.state);
+  // Approval is consent, not permission to act: the executor still re-runs the
+  // guardrails. EXECUTION_FAILED is retryable; nothing else is.
+  const executable = ["APPROVED", "EXECUTION_FAILED"].includes(packet.state);
+  const hasExecuted = packet.execution.artifacts.length > 0;
   const edited =
     subject !== packet.customerMessage.subject || body !== packet.customerMessage.body;
 
@@ -104,6 +121,39 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
     }
   }
 
+  async function execute() {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      const response = await fetch(`/api/interventions/${packet.id}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: packet.version }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setOutcome({ kind: "error", message: payload.error?.message ?? "The request failed." });
+        return;
+      }
+      if (payload.data.status === "BLOCKED") {
+        setOutcome({ kind: "blocked", rules: payload.data.blockingRules ?? [] });
+      } else if (payload.data.status === "EXECUTED") {
+        setOutcome({ kind: "executed", count: payload.data.artifacts.length });
+      } else {
+        setOutcome({
+          kind: "executionFailed",
+          message: payload.data.errors?.[0]?.message ?? "Execution failed.",
+        });
+      }
+      router.refresh();
+    } catch {
+      setOutcome({ kind: "error", message: "Could not reach the executor." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const preApproval = packet.guardrails.filter((g) => g.phase === "PRE_APPROVAL").at(-1);
   const preExecution = packet.guardrails.filter((g) => g.phase === "PRE_EXECUTION").at(-1);
 
@@ -132,6 +182,19 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
         <div className="banner banner-ok" data-testid="approved-banner">
           <strong>Approved</strong>
           Recorded against your account. No money has moved — execution is a later phase.
+        </div>
+      )}
+      {outcome?.kind === "executed" && (
+        <div className="banner banner-ok" data-testid="executed-banner">
+          <strong>Executed — {outcome.count} payment link(s) created in Razorpay Test Mode</strong>
+          Payment link created — revenue has <strong>NOT</strong> yet been recovered.
+          The links are awaiting payment.
+        </div>
+      )}
+      {outcome?.kind === "executionFailed" && (
+        <div className="banner banner-block" data-testid="execution-failed-banner">
+          <strong>Execution failed</strong>{outcome.message}
+          <div style={{ marginTop: 8 }}>No payment link was created. You can retry.</div>
         </div>
       )}
       {outcome?.kind === "rejected" && (
@@ -311,6 +374,90 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
           </p>
         )}
       </div>
+
+      {/* Execution */}
+      {(executable || hasExecuted) && (
+        <div className="card" data-testid="execution-card">
+          <h2>
+            Execution
+            <span className={hasExecuted ? "pill pill-pass" : "pill pill-warn"}>
+              {hasExecuted ? "EXECUTED" : "READY TO EXECUTE"}
+            </span>
+          </h2>
+
+          {!hasExecuted && (
+            <>
+              <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+                Approved by {packet.approval?.approver ?? "an approver"}. The executor will
+                re-run the pre-execution guardrails against current state before creating
+                anything in Razorpay Test Mode.
+              </p>
+              <div className="actions">
+                <button className="accent" onClick={execute} disabled={busy} data-testid="execute-button">
+                  {busy ? "Executing…" : "Execute"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {hasExecuted && (
+            <>
+              <div className="banner banner-ok" style={{ marginTop: 4 }}>
+                <strong>Payment link created — revenue has NOT yet been recovered.</strong>
+                Status is <em>awaiting payment</em>. Attribution arrives in the next phase,
+                when a real payment event confirms it.
+              </div>
+              <div className="table-scroll">
+                <table data-testid="artifact-table">
+                  <thead>
+                    <tr>
+                      <th>Razorpay Test Payment Link</th><th className="num">Amount</th>
+                      <th>Status</th><th>Provider id</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {packet.execution.artifacts.slice(0, 10).map((artifact) => (
+                      <tr key={artifact.id}>
+                        <td>
+                          <a href={artifact.shortUrl} target="_blank" rel="noreferrer noopener"
+                             data-testid="payment-link">{artifact.shortUrl}</a>
+                        </td>
+                        <td className="num">{formatRupees(artifact.amountPaise)}</td>
+                        <td><span className="pill pill-warn">awaiting payment</span></td>
+                        <td className="mono">{artifact.providerEntityId}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {packet.execution.artifacts.length > 10 && (
+                <p className="muted" style={{ fontSize: 12 }}>
+                  Showing 10 of {packet.execution.artifacts.length} links · total{" "}
+                  {formatRupees(packet.execution.totalAmountPaise)} awaiting payment.
+                </p>
+              )}
+            </>
+          )}
+
+          {packet.execution.attempts.length > 0 && (
+            <>
+              <label>Execution attempts</label>
+              <ul className="timeline">
+                {packet.execution.attempts.slice(0, 6).map((attempt) => (
+                  <li key={attempt.attemptNo}>
+                    <span className="seq">#{attempt.attemptNo}</span>
+                    <span className={attempt.status === "SUCCEEDED" ? "pill pill-pass" : "pill pill-block"}>
+                      {attempt.status}
+                    </span>
+                    <span className="mono">key {attempt.idempotencyKey}</span>
+                    {attempt.error && <span className="muted">{attempt.error.slice(0, 60)}</span>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       {/* 7. Audit timeline */}
       <div className="card">
