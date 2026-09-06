@@ -27,7 +27,7 @@ if (fs.existsSync(path.join(process.cwd(), ".env"))) {
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set");
 
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 3 }) });
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const readJson = <T,>(file: string, schema: { parse: (v: unknown) => T }): T =>

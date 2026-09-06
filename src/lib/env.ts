@@ -49,7 +49,7 @@ const envSchema = z.object({
    * current model list if a call reports an unknown model.
    */
   GROQ_API_KEY: z.string().min(1).optional(),
-  GROQ_MODEL: z.string().min(1).default("llama-3.3-70b-versatile"),
+  GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
 
   /**
    * Which provider to use. "auto" prefers Anthropic, then Groq, then falls back

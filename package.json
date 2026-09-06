@@ -21,7 +21,10 @@
     "detector": "tsx --conditions=react-server scripts/run-detector.ts",
     "estimator": "tsx --conditions=react-server scripts/run-estimator.ts",
     "reasoner": "tsx --conditions=react-server scripts/run-reasoner.ts",
-    "reasoner:demo": "tsx --conditions=react-server scripts/run-reasoner.ts --scripted"
+    "reasoner:demo": "tsx --conditions=react-server scripts/run-reasoner.ts --scripted",
+    "demo:setup": "tsx --conditions=react-server scripts/demo-setup.ts",
+    "demo:reset": "npm run db:seed && npm run demo:setup",
+    "test:e2e": "playwright test"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^26.4.1",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",

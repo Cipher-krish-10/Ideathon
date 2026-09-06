@@ -9,7 +9,7 @@ import { PrismaClient } from "@/generated/prisma/client";
 export function createTestClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL is not set");
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 3 }) });
 }
 
 export const DEMO_MERCHANT_SOURCE_REF = "merch_demo_001";
@@ -40,9 +40,28 @@ export async function purgeMerchant(prisma: PrismaClient, merchantId: string) {
   });
 }
 
-/** A throwaway merchant for tests that must not touch seeded demo data. */
+/** The default guardrail policy every scratch merchant starts with. */
+export const DEFAULT_TEST_POLICY_RULES = {
+  MAX_DISCOUNT_BPS: { severity: "BLOCK", limit: 1_500 },
+  MAX_SINGLE_ACTION_EXPOSURE_PAISE: { severity: "BLOCK", limit: 5_000_000 },
+  DAILY_DISCOUNT_BUDGET_PAISE: { severity: "BLOCK", limit: 2_500_000 },
+  MIN_EXPECTED_NET_PAISE: { severity: "BLOCK", limit: 10_000 },
+  MAX_CONTACTS_PER_CUSTOMER: { severity: "BLOCK", limit: 2, window_days: 7 },
+  DO_NOT_CONTACT: { severity: "BLOCK" },
+  QUIET_HOURS: { severity: "REQUIRE_APPROVAL", start_hour: 21, end_hour: 9 },
+  MAX_CONCURRENT_LIVE: { severity: "BLOCK", limit: 3 },
+  TEST_MODE_ONLY: { severity: "BLOCK" },
+  LOW_CONFIDENCE: { severity: "REQUIRE_APPROVAL", min_confidence: "MEDIUM" },
+} as const;
+
+/**
+ * A throwaway merchant for tests that must not touch seeded demo data.
+ *
+ * Comes with an active guardrail policy, because the real seed always creates
+ * one and both the reasoner and the guardrail engine now require it.
+ */
 export async function createScratchMerchant(prisma: PrismaClient, label: string) {
-  return prisma.merchant.create({
+  const merchant = await prisma.merchant.create({
     data: {
       sourceRef: `test_${label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: `Test Merchant ${label}`,
@@ -52,6 +71,13 @@ export async function createScratchMerchant(prisma: PrismaClient, label: string)
       datasetVersion: "test",
     },
   });
+  await prisma.guardrailPolicy.create({
+    data: {
+      merchantId: merchant.id, version: 1, isActive: true,
+      rules: DEFAULT_TEST_POLICY_RULES as unknown as object,
+    },
+  });
+  return merchant;
 }
 
 /**

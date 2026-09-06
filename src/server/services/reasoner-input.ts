@@ -115,14 +115,21 @@ export function toReasonerCandidates(
     .sort((a, b) => a.playbookKey.localeCompare(b.playbookKey));
 }
 
-/** Policy context the model may cite but cannot change. */
+/**
+ * Policy context the model may cite but cannot change.
+ *
+ * Takes the ACTIVE policy rules, not the seeded configuration file. Showing the
+ * model stale limits would let it reason carefully against numbers that no
+ * longer gate anything -- and it would do so convincingly, which is worse than
+ * not reasoning about policy at all.
+ */
 export function toReasonerPolicy(
   merchantConfig: MerchantConfig,
   merchantMode: string,
+  activeRules: Record<string, Record<string, unknown>>,
 ): ReasonerPolicyContext {
-  const rules = merchantConfig.guardrail_policy.rules;
   const limitOf = (rule: string, fallback: number): number => {
-    const value = rules[rule]?.limit;
+    const value = activeRules[rule]?.limit;
     return typeof value === "number" ? value : fallback;
   };
 

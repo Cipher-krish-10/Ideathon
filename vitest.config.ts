@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // Playwright owns tests/e2e; vitest must not try to run those.
+    exclude: ["tests/e2e/**", "node_modules/**"],
     // Integration tests share one Postgres database; running files in parallel
     // would let them race on the same rows.
     fileParallelism: false,

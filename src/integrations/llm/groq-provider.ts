@@ -25,7 +25,7 @@ const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
  * GROQ_MODEL — confirm the id against Groq's current model list if a call
  * returns a model-not-found error.
  */
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_MAX_TOKENS = 2_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 

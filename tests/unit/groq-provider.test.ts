@@ -44,7 +44,7 @@ describe("GroqProvider", () => {
     expect(url).toBe("https://api.groq.com/openai/v1/chat/completions");
 
     const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
-    expect(body.model).toBe("llama-3.3-70b-versatile");
+    expect(body.model).toBe("openai/gpt-oss-120b");
     // Zero temperature: a demo must not produce a different recommendation on
     // a re-run over the same candidate table.
     expect(body.temperature).toBe(0);
@@ -69,12 +69,12 @@ describe("GroqProvider", () => {
   it("honours a configured model id", async () => {
     const fetchImpl = stubFetch(OK_BODY);
     await new GroqProvider({
-      apiKey: "gsk_test", model: "openai/gpt-oss-120b", fetchImpl,
+      apiKey: "gsk_test", model: "qwen/qwen3.8-27b", fetchImpl,
     }).generateDecision(request);
 
     const [, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
-    expect(body.model).toBe("openai/gpt-oss-120b");
+    expect(body.model).toBe("qwen/qwen3.8-27b");
   });
 
   it("surfaces a provider error message, so a bad key or model id is legible", async () => {

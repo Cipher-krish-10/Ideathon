@@ -22,27 +22,35 @@ import { getEnv } from "@/lib/env";
  */
 function createClient(): PrismaClient {
   const env = getEnv();
-  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
+  // Bounded pool. Scripts (seed, demo setup, detector runs) each open their own
+  // pool alongside this one, and an unbounded default exhausts Postgres.
+  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL, max: 5 });
   return new PrismaClient({
     adapter,
     log: env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 }
 
-// Next's dev server re-evaluates modules on hot reload; without a global cache
-// each reload would open a new pool and eventually exhaust Postgres.
+// Next's dev server re-evaluates modules on hot reload, so the instance is also
+// parked on globalThis to survive that. In production the module-level binding
+// is what matters.
 const globalForPrisma = globalThis as unknown as {
   __revenuepilotPrisma?: PrismaClient;
 };
 
-function getClient(): PrismaClient {
-  const existing = globalForPrisma.__revenuepilotPrisma;
-  if (existing) return existing;
+let client: PrismaClient | undefined;
 
-  const client = createClient();
-  if (getEnv().NODE_ENV !== "production") {
-    globalForPrisma.__revenuepilotPrisma = client;
-  }
+/**
+ * The single client instance.
+ *
+ * Memoised unconditionally. An earlier version only cached outside production,
+ * which meant that in a production build EVERY property access on the proxy
+ * below constructed a fresh client and a fresh connection pool — Postgres ran
+ * out of connections within a handful of requests.
+ */
+function getClient(): PrismaClient {
+  client ??= globalForPrisma.__revenuepilotPrisma ?? createClient();
+  globalForPrisma.__revenuepilotPrisma = client;
   return client;
 }
 

@@ -10,6 +10,7 @@ import { AnthropicProvider, GroqProvider, UnavailableLlmProvider } from "@/integ
 import { getEnv } from "@/lib/env";
 import { appendAuditEntry } from "@/server/audit/audit-logger";
 import { loadMerchantConfig } from "@/server/dataset/config";
+import { loadActivePolicy } from "./guardrail.service";
 import type { MerchantConfig } from "@/server/dataset/config";
 import { prisma } from "@/server/db";
 import type { PrismaClient } from "@/server/db";
@@ -142,10 +143,17 @@ export async function runReasonerForOpportunity(
     );
   }
 
+  // The live policy, from the same source the guardrail engine reads.
+  const activePolicy = await loadActivePolicy(db, merchantId);
+
   const input: ReasonerInput = {
     opportunity: toReasonerOpportunity(opportunity),
     candidates: toReasonerCandidates(opportunity.estimates),
-    policy: toReasonerPolicy(merchantConfig, opportunity.merchant.mode),
+    policy: toReasonerPolicy(
+      merchantConfig,
+      opportunity.merchant.mode,
+      activePolicy.rules as unknown as Record<string, Record<string, unknown>>,
+    ),
     ...(options.untrusted ? { untrusted: options.untrusted } : {}),
   };
 
