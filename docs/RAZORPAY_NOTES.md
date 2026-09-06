@@ -108,3 +108,80 @@ Razorpay error responses carry `error.code`, `error.description`, `error.reason`
 Webhooks · signature verification · attribution · payment capture. Phase 6.
 
 A payment link in `created` status is the end of Phase 5. **No revenue has been recovered at that point**, and nothing in the UI or the metrics says otherwise.
+
+---
+
+## 8. Webhooks — verified 2026-09-07
+
+### Signature verification
+
+| Item | Value | Source |
+|---|---|---|
+| Header | `X-Razorpay-Signature` | [validate-test](https://razorpay.com/docs/webhooks/validate-test/) |
+| Event id header | `x-razorpay-event-id`, "a unique per event" identifier | same |
+| Algorithm | HMAC-SHA256, webhook secret as key, **raw request body** as message | same |
+
+> The docs are explicit: *"do not parse or cast it before validation"*. Our route reads
+> `request.text()` before anything else, and the comparison is constant-time — a
+> fast-exit string compare leaks how much of a forged signature was correct.
+
+### `payment_link.paid` payload
+
+| Path | Our field | Purpose |
+|---|---|---|
+| `event` | `NormalisedEvent.providerEventType` | Routing |
+| `created_at` | `occurredAt` | Unix seconds |
+| `payload.payment_link.entity.id` | matched to `RazorpayArtifact.providerEntityId` | Which link |
+| `payload.payment_link.entity.reference_id` | **the attribution anchor** | Our per-target reference |
+| `payload.payment_link.entity.status` | must be `"paid"` | A link that exists is not a link that was paid |
+| `payload.payment_link.entity.notes.attribution_ref` | `Intervention.attributionRef` | Fallback anchor |
+| `payload.payment.entity.id` | `providerPaymentId` | Stored as `PaymentAttempt.gatewayRef` |
+| `payload.payment.entity.amount` | `attributedAmountPaise` | **The recovered amount.** Always the provider's figure, never our estimate |
+| `payload.payment.entity.status` | must be `"captured"` for `payment.captured` | |
+
+`notes` arrives as an object, or as `[]` when empty — handled explicitly.
+
+**Events acted on:** `payment_link.paid`, `payment.captured`. `payment.failed` is stored
+but drives nothing. Anything else is `UNSUPPORTED`: stored, acknowledged, never guessed at.
+
+### Local development
+
+Razorpay must reach your machine, so the endpoint needs a public URL.
+
+```bash
+npm run dev                     # terminal 1
+cloudflared tunnel --url http://localhost:3000   # or: ngrok http 3000
+```
+
+Take the printed hostname and configure it in **Razorpay Dashboard → Settings → Webhooks**:
+
+| Field | Value |
+|---|---|
+| Webhook URL | `https://<your-tunnel-host>/api/webhooks/razorpay` |
+| Secret | any strong string — put the same value in `RAZORPAY_WEBHOOK_SECRET` |
+| Active events | `payment_link.paid`, `payment.captured` |
+
+Then add to `.env`:
+
+```bash
+RAZORPAY_WEBHOOK_SECRET="the_same_secret_you_entered"
+```
+
+**Never hard-code a tunnel host** — they change on every restart, and a stale one silently
+stops delivering.
+
+**Verify without a real payment:**
+
+```bash
+# Replay a recorded event, correctly signed.
+BODY='{"entity":"event","event":"payment_link.paid","created_at":1788000000,"payload":{}}'
+SIG=$(node -e "console.log(require('crypto').createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(process.argv[1]).digest('hex'))" "$BODY")
+curl -X POST http://localhost:3000/api/webhooks/razorpay \
+  -H "Content-Type: application/json" \
+  -H "X-Razorpay-Signature: $SIG" \
+  -H "x-razorpay-event-id: evt_manual_$(date +%s)" \
+  -d "$BODY"
+```
+
+An unsigned or wrongly-signed body returns **400** and is stored with
+`signatureValid = false` — never processed.

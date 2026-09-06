@@ -1,5 +1,6 @@
 export {
   ALLOWED_TRANSITIONS,
+  OUTCOME_STATES,
   TERMINAL_STATES,
   canTransition,
   checkTransition,

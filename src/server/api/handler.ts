@@ -63,10 +63,16 @@ export function toErrorResponse(error: unknown): NextResponse<ApiError> {
   return jsonError("INTERNAL_ERROR", "Something went wrong handling this request.", 500);
 }
 
-/** Wrap a handler so every thrown error becomes a structured response. */
-export function route<T>(
-  handler: () => Promise<NextResponse<T> | NextResponse<ApiError>>,
-): Promise<NextResponse<T> | NextResponse<ApiError>> {
+/**
+ * Wrap a handler so every thrown error becomes a structured response.
+ *
+ * Deliberately untyped in its success shape: a handler that returns different
+ * response bodies on different paths is normal, and pinning one of them as
+ * "the" type just forces casts at every other return.
+ */
+export function route(
+  handler: () => Promise<NextResponse<unknown>>,
+): Promise<NextResponse<unknown>> {
   return handler().catch(toErrorResponse);
 }
 

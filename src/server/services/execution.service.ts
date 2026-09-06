@@ -218,7 +218,7 @@ export async function executeIntervention(
       });
       attemptCounter += artifact.attemptsUsed;
 
-      const row = await db.razorpayArtifact.create({
+      await db.razorpayArtifact.create({
         data: {
           merchantId: intervention.merchantId, interventionId,
           executionAttemptId: artifact.executionAttemptId,
@@ -229,19 +229,6 @@ export async function executeIntervention(
           status: artifact.artifact.status,
           raw: artifact.artifact.raw as Prisma.InputJsonValue,
         },
-        select: { id: true },
-      });
-
-      await audit(db, intervention.merchantId, {
-        actorId: options.userId, entityType: "RazorpayArtifact", entityId: row.id,
-        action: artifact.artifact.reconciled ? "ARTIFACT_RECONCILED" : "ARTIFACT_CREATED",
-        after: {
-          interventionId, targetRef: target.perTargetRef,
-          providerEntityId: artifact.artifact.providerEntityId,
-          amountPaise: artifact.artifact.amountPaise,
-          // "created" is the link's state, not a payment.
-          status: artifact.artifact.status,
-        },
       });
 
       artifacts.push({
@@ -250,7 +237,6 @@ export async function executeIntervention(
         shortUrl: artifact.artifact.shortUrl, amountPaise: artifact.artifact.amountPaise,
         status: artifact.artifact.status, reconciled: artifact.artifact.reconciled,
       });
-      attemptCounter = await db.executionAttempt.count({ where: { interventionId } });
     } catch (error) {
       const providerError = error instanceof ProviderError
         ? error
@@ -258,8 +244,28 @@ export async function executeIntervention(
       errors.push({
         targetRef: target.perTargetRef, message: providerError.message, kind: providerError.kind,
       });
-      attemptCounter = await db.executionAttempt.count({ where: { interventionId } });
+      // Attempts consumed even on failure, so the next target's numbering is
+      // still unique within the intervention.
+      attemptCounter += MAX_ATTEMPTS_PER_TARGET;
     }
+  }
+
+  // One audit entry for the batch rather than one per artifact. Each audit
+  // append takes a per-merchant advisory lock, so 26 separate transactions
+  // would serialise the whole execution behind the lock. The itemised record
+  // lives in RazorpayArtifact and ExecutionAttempt, which are queryable.
+  if (artifacts.length > 0) {
+    await audit(db, intervention.merchantId, {
+      actorId: options.userId, entityType: "Intervention", entityId: interventionId,
+      action: "ARTIFACTS_CREATED",
+      after: {
+        count: artifacts.length,
+        reconciled: artifacts.filter((a) => a.reconciled).length,
+        totalAmountPaise: artifacts.reduce((sum, a) => sum + a.amountPaise, 0),
+        // "created" is the link's state, not a payment.
+        providerEntityIds: artifacts.slice(0, 30).map((a) => a.providerEntityId),
+      },
+    });
   }
 
   // ---- Outcome --------------------------------------------------------------

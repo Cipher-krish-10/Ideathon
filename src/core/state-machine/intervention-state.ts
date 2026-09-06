@@ -36,6 +36,9 @@ export const TERMINAL_STATES: readonly InterventionState[] = [
   "LEARNED",
 ];
 
+/** States a payment outcome may still be recorded against. */
+export const OUTCOME_STATES: readonly InterventionState[] = ["CONVERTED", "NOT_CONVERTED"];
+
 /**
  * Legal transitions.
  *
@@ -63,10 +66,13 @@ export const ALLOWED_TRANSITIONS: Readonly<Record<InterventionState, readonly In
   // A bounded retry may re-enter EXECUTING, but only via the executor, which
   // re-runs the guardrails first.
   EXECUTION_FAILED: ["EXECUTING", "CANCELLED"],
-  // CONVERTED / NOT_CONVERTED require a real payment event: attribution phase.
-  OBSERVING: [],
-  CONVERTED: [],
-  NOT_CONVERTED: [],
+  // Reached only from a verified payment event, via the attribution engine.
+  // Nothing in the application may set these directly.
+  OBSERVING: ["CONVERTED", "NOT_CONVERTED"],
+  // LEARNED is terminal, which is what makes the PlaybookStat update
+  // idempotent: the transition can only ever happen once.
+  CONVERTED: ["LEARNED"],
+  NOT_CONVERTED: ["LEARNED"],
   LEARNED: [],
 };
 

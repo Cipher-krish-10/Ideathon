@@ -45,6 +45,14 @@ export interface DecisionPacketData {
   guardrails: GuardrailEvaluation[];
   customerMessage: { subject: string; body: string; editedAt: string | null };
   approval: { decision: string; note: string | null; decidedAt: string; approver: string } | null;
+  attribution: {
+    records: {
+      id: string; method: string; confidence: string; attributedAmountPaise: number;
+      note: string | null; attributedAt: string; providerEventId: string | null;
+      simulated: boolean;
+    }[];
+    recoveredAmountPaise: number;
+  };
   execution: {
     artifacts: {
       id: string; providerEntityId: string; shortUrl: string;
@@ -82,6 +90,8 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
   // guardrails. EXECUTION_FAILED is retryable; nothing else is.
   const executable = ["APPROVED", "EXECUTION_FAILED"].includes(packet.state);
   const hasExecuted = packet.execution.artifacts.length > 0;
+  const converted = packet.attribution.records.length > 0;
+  const awaitingPayment = hasExecuted && !converted;
   const edited =
     subject !== packet.customerMessage.subject || body !== packet.customerMessage.body;
 
@@ -149,6 +159,28 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
       router.refresh();
     } catch {
       setOutcome({ kind: "error", message: "Could not reach the executor." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function simulate(artifactId: string) {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      const response = await fetch("/api/simulate/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifactId }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setOutcome({ kind: "error", message: payload.error?.message ?? "Simulation failed." });
+        return;
+      }
+      router.refresh();
+    } catch {
+      setOutcome({ kind: "error", message: "Could not reach the simulator." });
     } finally {
       setBusy(false);
     }
@@ -454,6 +486,102 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
                   </li>
                 ))}
               </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Attribution — realised revenue, or an explanation of its absence */}
+      {(converted || awaitingPayment) && (
+        <div className="card" data-testid="attribution-card">
+          <h2>
+            Attribution
+            <span className={converted ? "pill pill-pass" : "pill pill-warn"}>
+              {converted ? "CONVERTED" : "AWAITING PAYMENT"}
+            </span>
+          </h2>
+
+          {converted ? (
+            <>
+              <div className="row" style={{ gap: 32, marginBottom: 8 }}>
+                <div>
+                  <div className="label">Actual recovered revenue</div>
+                  <div style={{ fontSize: 26, fontWeight: 650 }} data-testid="recovered-amount">
+                    {formatRupees(packet.attribution.recoveredAmountPaise)}
+                  </div>
+                  {/* Realised, not projected. */}
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Confirmed by a verified payment event
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Expected net (estimate)</div>
+                  <div style={{ fontSize: 26, fontWeight: 650, color: "var(--muted)" }}>
+                    {formatRupees(packet.recommendation.estimate.expectedNetPaise)}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    What the estimator projected, unchanged
+                  </div>
+                </div>
+              </div>
+
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Method</th><th>Confidence</th><th className="num">Amount</th>
+                      <th>Payment event</th><th>When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {packet.attribution.records.map((record) => (
+                      <tr key={record.id}>
+                        <td>
+                          <span className="pill pill-accent" data-testid="attribution-method">
+                            {record.method}
+                          </span>
+                        </td>
+                        <td><span className="pill pill-pass">{record.confidence}</span></td>
+                        <td className="num">{formatRupees(record.attributedAmountPaise)}</td>
+                        <td className="mono">
+                          {record.providerEventId ?? "—"}
+                          {record.simulated && (
+                            <span className="pill pill-warn" style={{ marginLeft: 6 }}>simulated</span>
+                          )}
+                        </td>
+                        <td className="mono">{formatDateTime(record.attributedAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {packet.attribution.records[0]?.note && (
+                <p className="muted" style={{ fontSize: 13 }}>
+                  {packet.attribution.records[0].note}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="muted" style={{ fontSize: 14, marginTop: 0 }}>
+                The payment link exists and is awaiting payment. Nothing is counted as
+                recovered until a verified payment event arrives and attribution resolves.
+                If the evidence is ambiguous the system will refuse to claim credit rather
+                than guess.
+              </p>
+              <div className="actions">
+                <button
+                  onClick={() => simulate(packet.execution.artifacts[0]!.id)}
+                  disabled={busy}
+                  data-testid="simulate-payment"
+                >
+                  {busy ? "Delivering event…" : "Simulate payment (demo)"}
+                </button>
+              </div>
+              <p className="muted" style={{ fontSize: 12 }}>
+                The simulation builds a signed provider event and pushes it through the same
+                webhook pipeline — it cannot mark this converted by itself.
+              </p>
             </>
           )}
         </div>

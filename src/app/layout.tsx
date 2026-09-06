@@ -28,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Link href="/opportunities">Opportunities</Link>
           <Link href="/interventions">Interventions</Link>
           <Link href="/policies">Policies</Link>
+          <Link href="/analytics">Analytics</Link>
           <Link href="/audit">Audit</Link>
           <span className="spacer" />
           <span className="role">{session?.role ?? "—"}</span>

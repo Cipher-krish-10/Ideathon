@@ -92,7 +92,16 @@ export class FakePaymentProvider implements PaymentProvider {
       // A created link is not a paid one. The fake must not pretend otherwise.
       status: "created",
       referenceId: command.referenceId,
-      raw: { provider: "fake", note: "No external call was made." },
+      // Mirrors the shape of a real Razorpay response, so anything downstream
+      // that reads `raw` (attribution, simulation) behaves identically.
+      raw: {
+        provider: "fake",
+        id: `plink_FAKE${suffix}`,
+        reference_id: command.referenceId,
+        amount: command.amountPaise,
+        status: "created",
+        note: "No external call was made.",
+      },
       reconciled,
     };
   }

@@ -6,7 +6,7 @@ Built for the Razorpay hackathon track **AI Growth & Agentic Commerce**. Razorpa
 
 ```
 OBSERVE → REASON → PLAN → GUARDRAIL → HUMAN APPROVAL → ACT → VERIFY → LEARN
-  ✅        ✅       ✅        ✅            ✅          ⬜      ⬜      ⬜
+  ✅        ✅       ✅        ✅            ✅          ✅      ✅      ✅
 ```
 
 ---
@@ -113,8 +113,8 @@ An **ESLint boundary rule** enforces the purity of `src/core` — importing Pris
 ## Verification
 
 ```bash
-npm run verify     # typecheck · lint · 300 tests · 105 database checks
-npm run test:e2e   # 9 Playwright tests, including the guardrail failure beat
+npm run verify     # typecheck · lint · 388 tests · 105 database checks
+npm run test:e2e   # 13 Playwright tests, the whole loop, no live provider
 ```
 
 | Layer | Coverage |
@@ -153,11 +153,22 @@ npm run test:e2e   # 9 Playwright tests, including the guardrail failure beat
 
 ---
 
+## Four numbers, kept apart
+
+The distinction the whole product turns on:
+
+| | |
+|---|---|
+| **Potential** | what the detector found at risk — counted facts |
+| **Expected** | what the estimator projects — a model output |
+| **Executed** | payment links created at the provider — not revenue |
+| **Recovered** | money a verified payment event confirmed — the only one called revenue |
+
+Recovered revenue is sourced **solely** from `AttributionRecord`, written only when the attribution engine resolves confidently. When evidence is ambiguous it records `UNATTRIBUTED` and explains why, rather than crediting whatever ran most recently.
+
 ## Not built yet
 
-Razorpay execution · webhook ingestion · attribution · the LEARN step · production authentication.
-
-The seams are already in place for them: a `PaymentProvider` interface with a fake implementation, an `ExecutionAttempt` table with persisted idempotency keys, `WebhookEvent` and `AttributionRecord` models, and `PlaybookStat` counters that preserve their seeded values so learned movement stays visible.
+Live-mode payments (there is no code path) · multi-detector portfolio reasoning · autonomy tiers · production authentication.
 
 ## Stack
 

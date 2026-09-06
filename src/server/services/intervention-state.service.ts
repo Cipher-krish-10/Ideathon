@@ -40,6 +40,13 @@ export interface TransitionOptions {
   data?: Prisma.InterventionUpdateInput;
   evaluatedAt?: Date;
   client?: PrismaClient;
+  /**
+   * Extra work to run INSIDE the transition's transaction.
+   *
+   * Used by the LEARN step so a counter update and the state change that
+   * authorises it cannot come apart — either both land or neither does.
+   */
+  onCommit?: (tx: Prisma.TransactionClient) => Promise<void>;
 }
 
 export interface TransitionResult {
@@ -105,6 +112,8 @@ export async function transitionIntervention(
       before: { state: current.state, version: current.version },
       after: { state: options.to, version: updated.version, ...(options.metadata ?? {}) },
     });
+
+    if (options.onCommit) await options.onCommit(tx);
 
     return {
       interventionId,

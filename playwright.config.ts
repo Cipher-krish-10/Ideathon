@@ -22,6 +22,10 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "npm run build && npm run start -- --port 3100",
+    // The E2E suite must NEVER call the real payment provider. A test that
+    // depends on a third party fails for reasons unrelated to the code, and
+    // creating 26 live payment links per run is both slow and rate-limited.
+    env: { PAYMENT_PROVIDER: "fake" },
     url: "http://localhost:3100/api/metrics/dashboard",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

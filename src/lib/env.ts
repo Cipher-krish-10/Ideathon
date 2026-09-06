@@ -75,6 +75,12 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().min(1).optional(),
   RAZORPAY_KEY_SECRET: z.string().min(1).optional(),
   RAZORPAY_MODE: z.literal("test").optional(),
+
+  /**
+   * Webhook signing secret, configured in the Razorpay dashboard.
+   * Read only inside the webhook route; never logged or stored.
+   */
+  RAZORPAY_WEBHOOK_SECRET: z.string().min(1).optional(),
 })
   .refine(
     (env) =>

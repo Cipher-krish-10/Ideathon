@@ -1,6 +1,6 @@
 # RevenuePilot — Demo Script
 
-**Runtime:** ~5 minutes. **Mode:** Razorpay Test Mode. **No money is recovered in this demo** — a payment link is created and left awaiting payment. Attribution is Phase 6.
+**Runtime:** ~6 minutes. **Mode:** Razorpay Test Mode. The loop now closes: detect → estimate → reason → guardrail → approve → execute → **payment → webhook → attribution → recovered revenue → learn**.
 
 ---
 
@@ -13,7 +13,10 @@ npm run dev              # http://localhost:3000
 ```
 
 **Execution provider.** `PAYMENT_PROVIDER` defaults to `fake`, which creates realistic
-artifacts with no external call — fine for rehearsal. For **real Razorpay Test Mode**, add
+artifacts with no external call — **use this for rehearsal and for the on-stage run**.
+The opportunity has 26 targets, so a real run makes 26 sequential Razorpay calls and will
+hit a `429` rate limit. Prove the real integration separately with
+`PAYMENT_PROVIDER=razorpay npm run razorpay:smoke`, which creates exactly one link. For **real Razorpay Test Mode**, add
 all three to `.env` (the adapter refuses to start without every one of them):
 
 ```bash
@@ -196,7 +199,63 @@ npm run db:seed && npm run demo:setup -- --block
 
 ---
 
-## 9. Audit *(20s)*
+## 9. THE LOOP CLOSES — payment, attribution, learning *(70s)*
+
+The **Attribution** card reads **AWAITING PAYMENT**.
+
+> "The link exists. Nobody has paid. Recovered revenue is still zero, and it will stay
+> there until a provider event says otherwise."
+
+**Two ways to produce the payment.**
+
+*Real (Razorpay Test Mode):* open the short URL, complete the Test Mode checkout, and let
+the real webhook arrive. Requires a tunnel — see `docs/RAZORPAY_NOTES.md` §8.
+
+*Simulated (reliable on stage):* click **Simulate payment (demo)**.
+
+> "This does not mark anything converted. It builds a Razorpay-shaped `payment_link.paid`
+> event, **signs it with the webhook secret**, and posts it through the same receiver a
+> real webhook hits. Signature verification, dedupe, normalisation, attribution and
+> learning all run for real. If attribution refuses, the simulation produces an
+> unattributed payment — exactly as a real one would."
+
+The card flips to **CONVERTED**:
+
+| | |
+|---|---|
+| **Actual recovered revenue** | ₹X — *confirmed by a verified payment event* |
+| Expected net (estimate) | unchanged, shown beside it |
+| Method | `DIRECT_REF` |
+| Confidence | `HIGH` |
+| Payment event | masked provider id, tagged **simulated** if it was |
+
+> "Two numbers, side by side, deliberately. The estimate is what we projected. The
+> recovered figure is what the provider says actually arrived. They are different
+> concepts and we never let one overwrite the other."
+
+**Show the refusal too, if asked.** Attribution returns `UNATTRIBUTED` when two
+interventions could each explain a payment, when the amount is outside tolerance, when the
+payment falls outside the window, or when it carries a reference we did not mint.
+
+> "A successful payment is not automatically credit for whatever ran most recently."
+
+**Now `/analytics`:**
+
+- **Recovered revenue** is non-zero, labelled **ACTUAL**; opportunity value and expected
+  net stay labelled **ESTIMATE**.
+- The funnel shows Detected → Proposed → Approved → Executed → **Converted**.
+- **Playbook learning**: the seeded rate and the current rate now differ, with the
+  conversion counted.
+
+> "The prior moved because of what actually happened. Run the agent again and the estimates
+> change — not because I told it to, but because it learned."
+
+**Optional:** click **Run Agent** once more and compare the recovery rate on the
+alternatives table.
+
+---
+
+## 10. Audit *(20s)*
 
 Open `/audit`.
 
@@ -208,11 +267,29 @@ Open `/audit`.
 
 ## Closing line
 
-> "Data → opportunity → deterministic options → AI recommendation → guardrails → human
-> approval → execution in Razorpay Test Mode. The model reasoned about the trade-off and
-> explained it. It never computed a rupee, never chose an action it wasn't offered, and
-> never got past a human. A payment link now exists and is awaiting payment — and until a
-> real payment event says otherwise, recovered revenue stays at zero."
+> "I don't tell the merchant where they lost money — I detect it.
+>
+> I don't let the model invent a financial decision — I give it deterministic choices.
+>
+> I don't let the AI move money by itself — guardrails and the merchant gate it.
+>
+> I don't call an execution successful because a link was created — I wait for provider
+> evidence.
+>
+> I don't claim revenue without attribution — and when the evidence is ambiguous, I say so.
+>
+> Then the system learns from what actually happened, and the next decision is different."
+
+**Ending frame:**
+
+```
+REAL / SIMULATED TEST PAYMENT
+  → VERIFIED WEBHOOK
+  → DIRECT_REF
+  → HIGH CONFIDENCE
+  → ₹X ACTUAL RECOVERED
+  → PLAYBOOK UPDATED
+```
 
 ---
 
@@ -229,12 +306,11 @@ Open `/audit`.
 ## Verification
 
 ```bash
-npm run verify      # typecheck, lint, 344 tests, DB checks
-npm run test:e2e    # 11 Playwright tests, including execution and the failure beat
-npm run razorpay:smoke                       # config check (fake by default)
-PAYMENT_PROVIDER=razorpay npm run razorpay:smoke   # one real Test Mode link
+npm run verify      # typecheck, lint, 388 tests, 105 DB checks
+npm run test:e2e    # 13 Playwright tests, end to end, no live provider
+PAYMENT_PROVIDER=razorpay npm run razorpay:smoke      # one real Test Mode link
+RUN_RAZORPAY_SMOKE=true npm test -- razorpay-smoke    # opt-in live integration test
 ```
 
-**Phase boundary.** Execution ends at a payment link in `created` status. Webhook
-ingestion, payment confirmation, and revenue attribution are **Phase 6**. Nothing in this
-build claims a rupee was recovered.
+**Still not built:** live-mode payments (there is no code path), multi-detector portfolio
+reasoning, autonomy tiers, and production authentication.

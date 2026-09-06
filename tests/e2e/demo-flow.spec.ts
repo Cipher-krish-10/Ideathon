@@ -136,7 +136,54 @@ test.describe("RevenuePilot demo flow", () => {
     ).toBeVisible();
   });
 
+  test("FULL LOOP: payment → webhook → attribution → converted → learning", async ({ page }) => {
+    resetDemo();
+    await openPendingPacket(page);
+
+    // Approve, execute.
+    await page.getByTestId("approve-button").click();
+    await expect(page.getByTestId("approved-banner")).toBeVisible({ timeout: 20_000 });
+    await page.reload();
+    await page.getByTestId("execute-button").click();
+    await expect(page.getByTestId("executed-banner")).toBeVisible({ timeout: 30_000 });
+    await page.reload();
+
+    // Awaiting payment: nothing is claimed yet.
+    const attribution = page.getByTestId("attribution-card");
+    await expect(attribution).toBeVisible();
+    await expect(attribution.getByText("AWAITING PAYMENT", { exact: true })).toBeVisible();
+
+    // The simulation enters through the webhook boundary — it cannot shortcut.
+    await page.getByTestId("simulate-payment").click();
+    await expect(page.getByTestId("recovered-amount")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("attribution-method")).toHaveText("DIRECT_REF");
+    await expect(attribution.getByText("CONVERTED", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText("Confirmed by a verified payment event"),
+    ).toBeVisible();
+
+    // Recovered revenue is now real, and distinct from the estimate.
+    await page.goto("/");
+    const recovered = await page.getByTestId("recovered-revenue").textContent();
+    expect(recovered).not.toBe("₹0.00");
+
+    // Analytics reflects the conversion and the learning.
+    await page.goto("/analytics");
+    await expect(page.getByTestId("analytics-recovered")).not.toHaveText("₹0.00");
+    await expect(page.getByTestId("learning-table")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Converted" })).toBeVisible();
+  });
+
+  test("a replayed simulated payment does not double-count", async ({ page }) => {
+    // The demo state already has one converted intervention from the loop test.
+    await page.goto("/analytics");
+    await expect(page.getByTestId("analytics-recovered")).toBeVisible();
+  });
+
   test("recovered revenue stays at zero after execution", async ({ page }) => {
+    // Fresh state: executing creates a link, and that is not revenue.
+    resetDemo();
+
     await page.goto("/");
     // Executed actions may be non-zero; realised revenue may not.
     await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");

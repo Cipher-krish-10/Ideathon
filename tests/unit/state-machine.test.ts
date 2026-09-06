@@ -53,12 +53,31 @@ describe("intervention state machine", () => {
       expect(intoExecuting).toEqual(["APPROVED", "EXECUTION_FAILED"]);
     });
 
-    it("declares no inbound edge to any outcome state", () => {
-      // CONVERTED, NOT_CONVERTED and LEARNED require a real payment event and
-      // belong to the attribution phase. Creating a payment link is not one.
-      for (const [, targets] of Object.entries(ALLOWED_TRANSITIONS)) {
+    it("reaches an outcome state ONLY from OBSERVING", () => {
+      // CONVERTED and NOT_CONVERTED require provider evidence, which only
+      // arrives while an intervention is observing. Nothing else may set them.
+      const intoOutcome = Object.entries(ALLOWED_TRANSITIONS)
+        .filter(([, targets]) => targets.includes("CONVERTED") || targets.includes("NOT_CONVERTED"))
+        .map(([from]) => from);
+      expect(intoOutcome).toEqual(["OBSERVING"]);
+    });
+
+    it("reaches LEARNED only from a recorded outcome", () => {
+      // LEARNED is what makes the PlaybookStat update idempotent: it is
+      // terminal, so the counters can only ever be incremented once.
+      const intoLearned = Object.entries(ALLOWED_TRANSITIONS)
+        .filter(([, targets]) => targets.includes("LEARNED"))
+        .map(([from]) => from)
+        .sort();
+      expect(intoLearned).toEqual(["CONVERTED", "NOT_CONVERTED"]);
+      expect(isTerminal("LEARNED")).toBe(true);
+    });
+
+    it("never reaches an outcome state directly from execution", () => {
+      // Creating a payment link is not evidence that anyone paid.
+      for (const from of ["APPROVED", "EXECUTING", "EXECUTED"] as const) {
         for (const state of ["CONVERTED", "NOT_CONVERTED", "LEARNED"] as const) {
-          expect(targets).not.toContain(state);
+          expect(ALLOWED_TRANSITIONS[from]).not.toContain(state);
         }
       }
     });

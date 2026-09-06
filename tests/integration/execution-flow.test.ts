@@ -96,11 +96,12 @@ describe("execution flow", () => {
   });
 
   it("refuses to execute an unapproved intervention", async () => {
-    const { fixture, version } = await scenario({ approve: false });
+    const { merchant, fixture, version } = await scenario({ approve: false });
     await expect(execute(fixture.intervention.id, version, fixture.user.id))
       .rejects.toThrow(/Only an APPROVED intervention/);
-    expect(await prisma.executionAttempt.count()).toBe(0);
-    expect(await prisma.razorpayArtifact.count()).toBe(0);
+    // Scoped: an unscoped count would include every other merchant's rows.
+    expect(await prisma.executionAttempt.count({ where: { merchantId: merchant.id } })).toBe(0);
+    expect(await prisma.razorpayArtifact.count({ where: { merchantId: merchant.id } })).toBe(0);
   });
 
   it("refuses to execute a rejected intervention", async () => {
@@ -113,10 +114,10 @@ describe("execution flow", () => {
   });
 
   it("rejects a stale version", async () => {
-    const { fixture, version } = await scenario({ approve: true });
+    const { merchant, fixture, version } = await scenario({ approve: true });
     await expect(execute(fixture.intervention.id, version - 1, fixture.user.id))
       .rejects.toThrow(/changed since you loaded it/);
-    expect(await prisma.executionAttempt.count()).toBe(0);
+    expect(await prisma.executionAttempt.count({ where: { merchantId: merchant.id } })).toBe(0);
   });
 
   it("refuses to execute outside TEST mode", async () => {
@@ -261,7 +262,7 @@ describe("execution flow", () => {
       expect(outcome.status).toBe("EXECUTION_FAILED");
       // Not retryable: a response we cannot verify will not verify on retry.
       expect(provider.createCallCount).toBe(1);
-      expect(await prisma.razorpayArtifact.count()).toBe(0);
+      expect(await prisma.razorpayArtifact.count({ where: { merchantId: fixture.intervention.merchantId } })).toBe(0);
     });
   });
 
@@ -275,7 +276,7 @@ describe("execution flow", () => {
 
     expect(actions).toContain("EXECUTION_REQUESTED");
     expect(actions).toContain("EXECUTION_STARTED");
-    expect(actions).toContain("ARTIFACT_CREATED");
+    expect(actions).toContain("ARTIFACTS_CREATED");
     expect(actions).toContain("EXECUTION_SUCCEEDED");
     expect(actions).toContain("OBSERVING_STARTED");
     expect((await verifyAuditChain(prisma, merchant.id)).valid).toBe(true);

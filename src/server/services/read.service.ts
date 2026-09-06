@@ -147,6 +147,10 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       guardrailEvaluations: { orderBy: { evaluatedAt: "asc" } },
       razorpayArtifacts: { orderBy: { createdAt: "asc" } },
       executionAttempts: { orderBy: { attemptNo: "asc" } },
+      attributionRecords: {
+        include: { webhookEvent: { select: { providerEventId: true, headers: true } } },
+        orderBy: { attributedAt: "asc" },
+      },
       approval: { include: { user: { select: { name: true, email: true, role: true } } } },
       _count: { select: { targets: true } },
     },
@@ -266,6 +270,29 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       ),
     },
 
+    // REALISED revenue, sourced only from attribution records.
+    attribution: {
+      records: intervention.attributionRecords.map((record) => ({
+        id: record.id,
+        method: record.method,
+        confidence: record.confidence,
+        attributedAmountPaise: record.attributedAmountPaise,
+        note: record.note,
+        attributedAt: record.attributedAt.toISOString(),
+        // Masked: enough to identify, not enough to be a copy of the record.
+        providerEventId: record.webhookEvent?.providerEventId
+          ? `${record.webhookEvent.providerEventId.slice(0, 10)}…`
+          : null,
+        simulated:
+          (record.webhookEvent?.headers as Record<string, string> | null)?.[
+            "x-revenuepilot-simulated"
+          ] === "true",
+      })),
+      recoveredAmountPaise: intervention.attributionRecords.reduce(
+        (sum, record) => sum + record.attributedAmountPaise, 0,
+      ),
+    },
+
     approval: intervention.approval
       ? {
           decision: intervention.approval.decision,
@@ -303,7 +330,7 @@ export async function getDashboardMetrics(merchantId: string) {
   const [
     openOpportunities, pendingApprovals, approved, blocked, rejected,
     opportunityTotals, attributed, auditChain, executedInterventions,
-    artifactTotals, expectedNet,
+    artifactTotals, expectedNet, converted,
   ] = await Promise.all([
     prisma.opportunity.count({ where: { merchantId, status: "OPEN" } }),
     prisma.intervention.count({ where: { merchantId, state: "PENDING_APPROVAL" } }),
@@ -328,6 +355,9 @@ export async function getDashboardMetrics(merchantId: string) {
       where: { merchantId, interventions: { some: { state: { in: ["APPROVED", "EXECUTING", "EXECUTED", "OBSERVING"] } } } },
       _sum: { expectedNetPaise: true },
     }),
+    prisma.intervention.count({
+      where: { merchantId, state: { in: ["CONVERTED", "LEARNED"], }, attributionRecords: { some: {} } },
+    }),
   ]);
 
   return {
@@ -349,6 +379,8 @@ export async function getDashboardMetrics(merchantId: string) {
     // by the attribution phase from real payment events. Creating a payment
     // link does not move this, and neither does approving one.
     recoveredAmountPaise: attributed._sum.attributedAmountPaise ?? 0,
+    // Interventions with a real attributed payment behind them.
+    convertedInterventions: converted,
     auditVerified: auditChain.valid,
     auditEntryCount: auditChain.entryCount,
   };
@@ -456,4 +488,109 @@ function readIssues(source: unknown): { field: string; message: string }[] {
     const row = entry as Record<string, unknown>;
     return { field: String(row.field ?? ""), message: String(row.message ?? "") };
   });
+}
+
+/**
+ * Analytics.
+ *
+ * Every figure is labelled as an ESTIMATE or an ACTUAL. Conflating the two is
+ * the single easiest way for a demo to overstate what it achieved.
+ */
+export async function getAnalytics(merchantId: string) {
+  const [
+    opportunities, funnel, attributed, playbooks, stats,
+  ] = await Promise.all([
+    prisma.opportunity.aggregate({
+      where: { merchantId },
+      _sum: { recoverableAmountPaise: true, affectedCustomerCount: true },
+      _count: { _all: true },
+    }),
+    prisma.intervention.groupBy({
+      by: ["state"], where: { merchantId }, _count: { _all: true },
+    }),
+    prisma.attributionRecord.aggregate({
+      where: { merchantId },
+      _sum: { attributedAmountPaise: true }, _count: { _all: true },
+    }),
+    prisma.playbook.findMany({ where: { merchantId }, orderBy: { key: "asc" } }),
+    prisma.playbookStat.findMany({
+      where: { merchantId },
+      include: { playbook: { select: { key: true, name: true } } },
+    }),
+  ]);
+
+  const countOf = (states: string[]) =>
+    funnel.filter((row) => states.includes(row.state))
+      .reduce((sum, row) => sum + row._count._all, 0);
+
+  const expectedNet = await prisma.estimate.aggregate({
+    where: { merchantId, interventions: { some: { state: { in: ["APPROVED", "EXECUTING", "EXECUTED", "OBSERVING", "CONVERTED", "LEARNED"] } } } },
+    _sum: { expectedNetPaise: true },
+  });
+
+  // Aggregate the per-reason priors into one figure per playbook.
+  const byPlaybook = new Map<string, {
+    key: string; name: string; alphaMilli: number; betaMilli: number;
+    seededAlphaMilli: number; seededBetaMilli: number; observations: number;
+  }>();
+  for (const stat of stats) {
+    const entry = byPlaybook.get(stat.playbookId) ?? {
+      key: stat.playbook.key, name: stat.playbook.name,
+      alphaMilli: 0, betaMilli: 0, seededAlphaMilli: 0, seededBetaMilli: 0, observations: 0,
+    };
+    entry.alphaMilli += stat.alphaMilli;
+    entry.betaMilli += stat.betaMilli;
+    entry.seededAlphaMilli += stat.seededAlphaMilli;
+    entry.seededBetaMilli += stat.seededBetaMilli;
+    entry.observations += stat.observationCount;
+    byPlaybook.set(stat.playbookId, entry);
+  }
+
+  return {
+    // ESTIMATES
+    opportunityValuePaise: opportunities._sum.recoverableAmountPaise ?? 0,
+    opportunityCount: opportunities._count._all,
+    qualifyingCustomers: opportunities._sum.affectedCustomerCount ?? 0,
+    expectedNetPaise: expectedNet._sum.expectedNetPaise ?? 0,
+    // ACTUALS
+    recoveredAmountPaise: attributed._sum.attributedAmountPaise ?? 0,
+    attributedPaymentCount: attributed._count._all,
+    funnel: {
+      detected: opportunities._count._all,
+      proposed: countOf(["PROPOSED", "PENDING_APPROVAL", "APPROVED", "EXECUTING",
+        "EXECUTED", "OBSERVING", "CONVERTED", "NOT_CONVERTED", "LEARNED"]),
+      approved: countOf(["APPROVED", "EXECUTING", "EXECUTED", "OBSERVING",
+        "CONVERTED", "NOT_CONVERTED", "LEARNED"]),
+      executed: countOf(["EXECUTED", "OBSERVING", "CONVERTED", "NOT_CONVERTED", "LEARNED"]),
+      converted: countOf(["CONVERTED"]) + await prisma.intervention.count({
+        where: { merchantId, state: "LEARNED", attributionRecords: { some: {} } },
+      }),
+      blocked: countOf(["GUARDRAIL_BLOCKED"]),
+      rejected: countOf(["REJECTED"]),
+    },
+    playbooks: playbooks.map((playbook) => {
+      const learned = byPlaybook.get(playbook.id);
+      if (!learned) {
+        return {
+          key: playbook.key, name: playbook.name, hasPrior: false,
+          seededRateBps: 0, currentRateBps: 0,
+          conversions: 0, nonConversions: 0, observations: 0,
+        };
+      }
+      // Milli-units throughout; one observation is 1000. No float in the math
+      // that matters -- these are display rates only.
+      const rate = (alpha: number, beta: number) =>
+        alpha + beta === 0 ? 0 : Math.round((alpha * 10_000) / (alpha + beta));
+      return {
+        key: playbook.key,
+        name: playbook.name,
+        hasPrior: true,
+        seededRateBps: rate(learned.seededAlphaMilli, learned.seededBetaMilli),
+        currentRateBps: rate(learned.alphaMilli, learned.betaMilli),
+        conversions: Math.round((learned.alphaMilli - learned.seededAlphaMilli) / 1_000),
+        nonConversions: Math.round((learned.betaMilli - learned.seededBetaMilli) / 1_000),
+        observations: learned.observations,
+      };
+    }),
+  };
 }
