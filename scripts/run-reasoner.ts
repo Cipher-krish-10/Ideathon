@@ -9,6 +9,8 @@
  *   npm run reasoner -- --scripted   # replay a fixture response offline
  *   npm run reasoner -- --persist    # write the Intervention (PROPOSED only)
  *   npm run reasoner -- --inject     # add a prompt-injection attempt as untrusted data
+ *   npm run reasoner -- --persist --force
+ *                                    # propose again after changing provider or model
  *
  * This script CANNOT execute a money action. No Razorpay client exists in the
  * codebase, the reasoner has no tools, and the database refuses any execution
@@ -42,6 +44,15 @@ const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
 const persist = process.argv.includes("--persist");
 const scripted = process.argv.includes("--scripted");
 const inject = process.argv.includes("--inject");
+/**
+ * Propose again even though an open proposal exists.
+ *
+ * The reasoner is idempotent per opportunity, so re-running normally reuses the
+ * existing proposal. That is right for a repeated run, but wrong when you have
+ * deliberately CHANGED something -- switched provider or model, say -- and want
+ * to see the new reasoning recorded.
+ */
+const force = process.argv.includes("--force");
 
 const rupees = (paise: number) =>
   `${paise < 0 ? "-" : ""}₹${Math.abs(paise / 100).toLocaleString("en-IN", {
@@ -149,6 +160,7 @@ async function main() {
     client: prisma,
     provider,
     dryRun: !persist,
+    force,
     ...(untrusted ? { untrusted } : {}),
   });
 
@@ -241,6 +253,14 @@ async function main() {
         `(${result.created ? "created" : "existing reused"}), ` +
         `${result.llmCallIds.length} LlmCall row(s)`,
     );
+    if (!result.created && !force) {
+      console.log(
+        "           An open proposal already existed, so it was reused. If you changed",
+      );
+      console.log(
+        "           provider or model, re-run with --force to record fresh reasoning.",
+      );
+    }
   } else {
     console.log("DRY RUN — nothing written. Re-run with --persist to store the proposal.");
   }
