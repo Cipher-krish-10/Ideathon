@@ -42,6 +42,21 @@ const envSchema = z.object({
    */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5"),
+
+  /**
+   * Groq alternative. Groq serves open models behind an OpenAI-compatible API.
+   * Model ids change, so GROQ_MODEL is configurable; confirm against Groq's
+   * current model list if a call reports an unknown model.
+   */
+  GROQ_API_KEY: z.string().min(1).optional(),
+  GROQ_MODEL: z.string().min(1).default("llama-3.3-70b-versatile"),
+
+  /**
+   * Which provider to use. "auto" prefers Anthropic, then Groq, then falls back
+   * deterministically — so adding a key is the only step needed to switch on
+   * real reasoning.
+   */
+  LLM_PROVIDER: z.enum(["auto", "anthropic", "groq", "none"]).default("auto"),
 });
 
 export type Env = z.infer<typeof envSchema>;

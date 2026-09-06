@@ -6,7 +6,7 @@ import type { ReasonedProposal, ReasonerInput, UntrustedContext } from "@/core/r
 import { SYSTEM_PROMPT, reasonOverCandidates } from "@/core/reasoner";
 import type { LlmValidationOutcome, Prisma } from "@/generated/prisma/client";
 import type { LlmProvider } from "@/integrations/llm";
-import { AnthropicProvider, UnavailableLlmProvider } from "@/integrations/llm";
+import { AnthropicProvider, GroqProvider, UnavailableLlmProvider } from "@/integrations/llm";
 import { getEnv } from "@/lib/env";
 import { appendAuditEntry } from "@/server/audit/audit-logger";
 import { loadMerchantConfig } from "@/server/dataset/config";
@@ -64,15 +64,36 @@ export interface RunReasonerResult {
  */
 export function resolveProvider(): LlmProvider {
   const env = getEnv();
-  if (!env.ANTHROPIC_API_KEY) {
-    return new UnavailableLlmProvider(
-      "ANTHROPIC_API_KEY is not configured; reasoning is running in deterministic fallback mode.",
-    );
+
+  const anthropic = () =>
+    new AnthropicProvider({ apiKey: env.ANTHROPIC_API_KEY!, model: env.ANTHROPIC_MODEL });
+  const groq = () => new GroqProvider({ apiKey: env.GROQ_API_KEY!, model: env.GROQ_MODEL });
+
+  switch (env.LLM_PROVIDER) {
+    case "none":
+      return new UnavailableLlmProvider("LLM_PROVIDER=none; reasoning is disabled.");
+
+    case "anthropic":
+      return env.ANTHROPIC_API_KEY
+        ? anthropic()
+        : new UnavailableLlmProvider("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set.");
+
+    case "groq":
+      return env.GROQ_API_KEY
+        ? groq()
+        : new UnavailableLlmProvider("LLM_PROVIDER=groq but GROQ_API_KEY is not set.");
+
+    case "auto":
+    default:
+      if (env.ANTHROPIC_API_KEY) return anthropic();
+      if (env.GROQ_API_KEY) return groq();
+      // An absent credential is a degraded mode, not an error: the reasoner
+      // falls back deterministically and labels the proposal accordingly.
+      return new UnavailableLlmProvider(
+        "No LLM credential configured (set ANTHROPIC_API_KEY or GROQ_API_KEY); " +
+          "reasoning is running in deterministic fallback mode.",
+      );
   }
-  return new AnthropicProvider({
-    apiKey: env.ANTHROPIC_API_KEY,
-    model: env.ANTHROPIC_MODEL,
-  });
 }
 
 const OUTCOME_TO_ENUM: Record<string, LlmValidationOutcome> = {
