@@ -27,32 +27,51 @@ export default async function AnalyticsPage() {
     <main className="page">
       <h1>Analytics</h1>
       <p className="subtitle">
-        Estimates and actuals, kept apart. Only <strong>recovered revenue</strong> reflects
-        money that has genuinely arrived.
+        Four different things, deliberately never added together. Only{" "}
+        <strong>recovered revenue</strong> is money that has genuinely arrived.
       </p>
 
+      <div className="section-label">Historical merchant baseline</div>
+      <div className="grid grid-2" style={{ marginBottom: 20 }}>
+        <div className="metric historical">
+          <div className="label">Historical opportunity</div>
+          <div className="value" data-testid="analytics-opportunity">
+            {formatRupees(analytics.opportunityValuePaise)}
+          </div>
+          <div className="note">
+            POTENTIAL · detected in the merchant&apos;s synthetic payment history
+          </div>
+        </div>
+        <div className="metric historical">
+          <div className="label">Qualifying customers</div>
+          <div className="value">{analytics.qualifyingCustomers}</div>
+          <div className="note">Detected from merchant history</div>
+        </div>
+      </div>
+
+      <div className="section-label">This demo session</div>
       <div className="grid grid-4" style={{ marginBottom: 22 }}>
-        <div className="metric">
-          <div className="label">Opportunity value</div>
-          <div className="value">{formatRupees(analytics.opportunityValuePaise)}</div>
-          <div className="note">ESTIMATE · detected at risk</div>
-        </div>
-        <div className="metric">
-          <div className="label">Expected net</div>
+        <div className="metric projected">
+          <div className="label">Expected recovery</div>
           <div className="value">{formatRupees(analytics.expectedNetPaise)}</div>
-          <div className="note">ESTIMATE · estimator projection</div>
+          <div className="note">ESTIMATE · what the estimator projected</div>
         </div>
-        <div className="metric">
+        <div className="metric actual">
           <div className="label">Executed actions</div>
           <div className="value">{analytics.funnel.executed}</div>
           <div className="note">ACTUAL · links created at the provider</div>
         </div>
-        <div className="metric">
-          <div className="label">Recovered revenue</div>
+        <div className="metric actual">
+          <div className="label">Payments attributed</div>
+          <div className="value">{analytics.attributedPaymentCount}</div>
+          <div className="note">ACTUAL · verified payment events</div>
+        </div>
+        <div className="metric actual">
+          <div className="label">Actual recovered</div>
           <div className="value" data-testid="analytics-recovered">
             {formatRupees(analytics.recoveredAmountPaise)}
           </div>
-          <div className="note">ACTUAL · confirmed by payment events</div>
+          <div className="note">ACTUAL · the only figure called revenue</div>
         </div>
       </div>
 

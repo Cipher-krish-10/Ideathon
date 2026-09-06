@@ -594,3 +594,11 @@ export async function getAnalytics(merchantId: string) {
     }),
   };
 }
+
+/** The most recent payment link, for the demo's simulate-payment control. */
+export async function getLatestArtifactId(merchantId: string): Promise<string | null> {
+  const artifact = await prisma.razorpayArtifact.findFirst({
+    where: { merchantId }, orderBy: { createdAt: "desc" }, select: { id: true },
+  });
+  return artifact?.id ?? null;
+}

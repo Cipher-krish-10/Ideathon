@@ -4,6 +4,22 @@
 
 ---
 
+## What is real, and what is not
+
+> **The merchant history is synthetic and historical. The agent decisions and payment
+> outcomes are generated during this demo session.**
+
+| | |
+|---|---|
+| **Historical baseline** | 500 customers, 1,200 transactions, 1,223 payment attempts — a deterministic synthetic dataset representing six months of trading that *already happened*. It is never described as live traffic. |
+| **Simulation clock** | Starts at the instant the history ends (`2026-09-01`). Presentation only — **no detector, estimator, guardrail or attribution logic reads it**, so advancing it cannot change a financial outcome. |
+| **Session events** | Everything after you press *Run Agent*: opportunities, AI reasoning, guardrail evaluations, approvals, payment links, webhooks, attribution, learning. All real records, produced now. |
+| **Activity feed** | Derived entirely from the append-only audit log. If a line appears, an audited operation produced it. |
+| **FakeProvider vs real Razorpay** | `PAYMENT_PROVIDER=fake` (default) creates realistic artifacts with no external call. `PAYMENT_PROVIDER=razorpay` calls Razorpay Test Mode for real. The header always says which mode you are in. |
+| **Estimates vs actuals** | *Detected opportunity* and *expected net* are projections. *Executed actions* and *actual recovered revenue* are facts. The UI never adds them together. |
+
+---
+
 ## 0. Setup (before you present)
 
 ```bash
@@ -47,15 +63,33 @@ deliberate beat.
 
 ---
 
-## 1. Command Centre — the observation *(30s)*
+## 1. Command Centre — the environment *(40s)*
 
 Open `/`.
 
-- **₹5,14,274.00 recoverable**, **26 qualifying customers**
-- Point at the label: *"Potential — not yet recovered."* Recovered revenue reads **₹0.00**, because nothing has executed.
-- The **TEST MODE** banner is always on screen.
+The header states what this is: **RevenuePilot · Merchant Growth Agent**, tagged
+**DEMO ENVIRONMENT** and **RAZORPAY TEST MODE**, with the **simulation time** and an
+**agent status** dot.
 
-> "Every figure here was computed deterministically from 1,200 transactions and 1,223 payment attempts. None of it came from a model."
+> "Two things on this page, kept deliberately apart."
+
+**Historical merchant baseline** — ₹5,14,274 detected opportunity, 26 qualifying customers.
+
+> "This is the merchant's payment history. Synthetic, and historical — it already happened.
+> That ₹5,14,274 is money *at risk*, not money earned. Nothing on this row is revenue."
+
+**This demo session** — expected net, executed actions, awaiting payment, and **actual
+recovered revenue: ₹0.00**.
+
+> "Everything on this row was generated in the last few minutes, and will be generated
+> again in front of you. Recovered revenue is zero because nothing has been paid yet."
+
+The **Activity** feed is the session transcript. Every line comes from the append-only
+audit log — nothing is drawn for effect.
+
+**Demo controls** sit alongside: *Reset demo*, *+1 min*, *+5 min*, *Simulate successful
+payment*. They exist only when `DEMO_MODE=true`, and none of them can bypass a guardrail,
+an approval, or the attribution engine.
 
 ---
 
@@ -190,7 +224,15 @@ Reload — the packet now shows **two** guardrail tables that disagree: `PRE_APP
 
 > "The state a merchant reviews is not always the state that exists when they click. Budget gets consumed, consent gets withdrawn. So we evaluate twice — once to show you, once immediately before acting. That gap is exactly how an agent does something nobody meant."
 
-**Restore:** `npm run db:seed && npm run demo:setup`
+**Restore:** click **Reset demo**, or `npm run db:seed && npm run demo:setup -- --scripted`
+
+> **What Reset does.** Removes everything the agent produced — opportunities, estimates,
+> interventions, approvals, execution attempts, payment links, webhook events, attribution
+> records, LLM call records, the audit log, and any policy version above v1. Restores the
+> learning counters to their seeded priors, reactivates policy v1, and returns the clock to
+> the baseline. It **never** touches Customer, Product, Transaction or PaymentAttempt, and
+> never touches `data/*.csv`. A recovered transaction is returned to its historical FAILED
+> state.
 
 Shortcut for rehearsal — lands directly in the blocked state:
 ```bash

@@ -251,6 +251,7 @@ model Merchant {
   llmCalls             LlmCall[]
   playbookStats        PlaybookStat[]
   auditLogs            AuditLog[]
+  simulationState      SimulationState?
 
   @@map("merchant")
 }
@@ -912,6 +913,35 @@ model LlmCall {
   @@index([opportunityId])
   @@index([interventionId])
   @@map("llm_call")
+}
+
+/// Demo simulation clock.
+///
+/// PRESENTATION ONLY. Nothing in the detector, estimator, guardrail engine or
+/// attribution engine reads this — those all judge against the dataset's own
+/// reference instant, which is what keeps their results reproducible.
+///
+/// It exists so a demo can show a merchant environment moving forward in time
+/// rather than a static historical dashboard.
+model SimulationState {
+  id         String @id @default(cuid())
+  merchantId String @unique
+
+  /// Deterministic starting point: the instant the historical baseline ends.
+  baselineAt DateTime
+  /// Where the demo session has advanced to.
+  simulatedNow DateTime
+  /// IDLE until the agent has run in this session.
+  status String @default("IDLE")
+  /// Minutes advanced since reset, so the UI can show elapsed session time.
+  advancedMinutes Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("simulation_state")
 }
 
 // ---------------------------------------------------------------------------

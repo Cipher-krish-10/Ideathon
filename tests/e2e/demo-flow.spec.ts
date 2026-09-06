@@ -51,9 +51,9 @@ test.describe("RevenuePilot demo flow", () => {
     await expect(page.getByText("₹5,14,274.00").first()).toBeVisible();
     await expect(page.getByText("26", { exact: true }).first()).toBeVisible();
     // Potential and realised value must be visibly different things.
-    await expect(page.getByText("Potential — not yet recovered")).toBeVisible();
+    await expect(page.getByText("Potential, from merchant history")).toBeVisible();
     await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
-    await expect(page.getByText("Realised — confirmed by payment events")).toBeVisible();
+    await expect(page.getByText("ACTUAL · confirmed by payment events")).toBeVisible();
   });
 
   test("run agent produces a proposal", async ({ page }) => {
@@ -187,7 +187,7 @@ test.describe("RevenuePilot demo flow", () => {
     await page.goto("/");
     // Executed actions may be non-zero; realised revenue may not.
     await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
-    await expect(page.getByText("Realised — confirmed by payment events")).toBeVisible();
+    await expect(page.getByText("ACTUAL · confirmed by payment events")).toBeVisible();
   });
 
   test("merchant can reject", async ({ page }) => {
@@ -229,6 +229,79 @@ test.describe("RevenuePilot demo flow", () => {
     await page.getByTestId("limit-DAILY_DISCOUNT_BUDGET_PAISE").fill("2000000");
     await page.getByTestId("save-policy").click();
     await expect(page.getByTestId("policy-saved")).toContainText("version 3");
+  });
+
+  test("DEMO SESSION: reset → run → approve → execute → pay → recover → learn", async ({ page }) => {
+    // The whole journey through the UI, with the activity feed tracking it.
+    resetDemo();
+    await page.goto("/");
+
+    // Historical baseline and session state are visibly different things.
+    await expect(page.getByTestId("env-demo")).toHaveText("Demo environment");
+    await expect(page.getByTestId("historical-opportunity")).toHaveText("₹5,14,274.00");
+    await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
+    await expect(page.getByTestId("simulation-time")).toBeVisible();
+    await expect(page.getByText("Potential, from merchant history")).toBeVisible();
+
+    // The feed already shows the agent run performed by demo:setup.
+    await expect(page.getByTestId("activity-feed")).toBeVisible();
+    await expect(page.getByText("Recovery opportunities detected")).toBeVisible();
+
+    // Clock advances, and it is presentation only.
+    await page.getByTestId("demo-advance-5").click();
+    await expect(page.getByTestId("demo-controls-message")).toContainText("Simulation time is now");
+
+    // Approve and execute.
+    await page.goto("/interventions");
+    await page.getByRole("link", { name: "Open →" }).first().click();
+    await page.getByTestId("approve-button").click();
+    await expect(page.getByTestId("approved-banner")).toBeVisible({ timeout: 20_000 });
+    await page.reload();
+    await page.getByTestId("execute-button").click();
+    await expect(page.getByTestId("executed-banner")).toBeVisible({ timeout: 30_000 });
+
+    // Simulate the payment from the command centre's demo controls.
+    await page.goto("/");
+    await expect(page.getByTestId("executed-actions")).not.toHaveText("0");
+    await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
+
+    await page.getByTestId("demo-simulate-payment").click();
+    await expect(page.getByTestId("demo-controls-message")).toContainText(
+      "attributed", { timeout: 30_000 },
+    );
+
+    // Recovered revenue is now real.
+    await page.reload();
+    await expect(page.getByTestId("recovered-revenue")).not.toHaveText("₹0.00");
+    await expect(page.getByText("ACTUAL · confirmed by payment events")).toBeVisible();
+
+    // The feed tells the whole story, including the learning update.
+    const feed = page.getByTestId("activity-feed");
+    await expect(feed.getByText("Attribution confirmed")).toBeVisible();
+    await expect(feed.getByText("Revenue recovered")).toBeVisible();
+    await expect(feed.getByText("Playbook learning updated")).toBeVisible();
+
+    // Analytics keeps the four numbers apart.
+    await page.goto("/analytics");
+    await expect(page.getByTestId("analytics-opportunity")).toHaveText("₹5,14,274.00");
+    await expect(page.getByTestId("analytics-recovered")).not.toHaveText("₹0.00");
+    await expect(page.getByText("POTENTIAL · detected in the merchant's synthetic payment history")).toBeVisible();
+    await expect(page.getByTestId("learning-table")).toBeVisible();
+  });
+
+  test("reset returns the demo to its baseline", async ({ page }) => {
+    // Runs after the session test, so there is state to clear.
+    await page.goto("/");
+    await page.getByTestId("demo-reset").click();
+    await expect(page.getByTestId("demo-controls-message")).toContainText("Reset to baseline");
+
+    await page.reload();
+    await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
+    await expect(page.getByTestId("executed-actions")).toHaveText("0");
+    // No stale feed entries survive.
+    await expect(page.getByTestId("feed-empty")).toBeVisible();
+    // Historical baseline is untouched by a reset.
+    await expect(page.getByTestId("historical-opportunity")).toHaveText("₹0.00");
   });
 
   test("audit page verifies the hash chain", async ({ page }) => {

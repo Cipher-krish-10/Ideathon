@@ -113,8 +113,8 @@ An **ESLint boundary rule** enforces the purity of `src/core` — importing Pris
 ## Verification
 
 ```bash
-npm run verify     # typecheck · lint · 388 tests · 105 database checks
-npm run test:e2e   # 13 Playwright tests, the whole loop, no live provider
+npm run verify     # typecheck · lint · 404 tests · 105 database checks
+npm run test:e2e   # 15 Playwright tests, the whole session, no live provider
 ```
 
 | Layer | Coverage |
@@ -152,6 +152,26 @@ npm run test:e2e   # 13 Playwright tests, the whole loop, no live provider
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | The four-minute demo, with talking points |
 
 ---
+
+## Demo environment
+
+The command centre separates two things that are easy to conflate:
+
+- **Historical merchant baseline** — the synthetic dataset. Six months of trading that
+  already happened. Labelled as history everywhere it appears; never called live traffic.
+- **This demo session** — everything produced after *Run Agent*: opportunities, AI
+  reasoning, guardrail evaluations, approvals, payment links, webhooks, attribution,
+  learning.
+
+A **simulation clock** starts where the history ends. It is presentation only — no
+detector, estimator, guardrail or attribution logic reads it, so advancing it cannot change
+a financial outcome. The **activity feed** is derived entirely from the append-only audit
+log: if a line appears, an audited operation produced it.
+
+Demo controls (*Reset*, *+1 min*, *+5 min*, *Simulate payment*) exist only under
+`DEMO_MODE=true` and cannot bypass a guardrail, an approval, or the attribution engine —
+the payment control posts a signed event through the same webhook receiver a real payment
+uses.
 
 ## Four numbers, kept apart
 

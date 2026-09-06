@@ -7,6 +7,7 @@ import {
   detectFailedPaymentRecovery,
 } from "@/core/detectors";
 import type { Prisma } from "@/generated/prisma/client";
+import { appendAuditEntry } from "@/server/audit/audit-logger";
 import { prisma } from "@/server/db";
 import type { PrismaClient } from "@/server/db";
 import { loadMerchantConfig } from "@/server/dataset/config";
@@ -205,6 +206,24 @@ async function persistDetection(
         })),
       });
     }
+
+    // Audited so the activity feed's opening line is a real recorded event
+    // rather than something the UI asserts happened.
+    await appendAuditEntry(tx, {
+      merchantId,
+      actorType: "AGENT",
+      entityType: "Opportunity",
+      entityId: opportunity.id,
+      action: "OPPORTUNITY_DETECTED",
+      after: {
+        detectorVersion: detection.detectorVersion,
+        transactionsScanned: detection.scan.transactionsScanned,
+        unpaidTransactions: detection.scan.unpaidTransactions,
+        qualifyingCount: detection.aggregate.qualifyingTransactionCount,
+        affectedCustomerCount: detection.aggregate.affectedCustomerCount,
+        recoverableAmountPaise: detection.aggregate.recoverableAmountPaise,
+      },
+    });
 
     return {
       opportunityId: opportunity.id,
