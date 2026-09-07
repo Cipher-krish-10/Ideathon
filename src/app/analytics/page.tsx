@@ -4,6 +4,7 @@ import { formatPercent, formatRupees } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { getAnalytics } from "@/server/services/read.service";
 import { getSimulationState } from "@/server/services/simulation";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function AnalyticsPage() {
   const session = await requireSession();
-  const [analytics, simulation] = await Promise.all([
+  const [analytics, simulation, clock] = await Promise.all([
     getAnalytics(session.merchantId),
     getSimulationState(session.merchantId),
+    getSessionProjection(session.merchantId),
   ]);
 
   const funnelRows = [
@@ -34,12 +36,13 @@ export default async function AnalyticsPage() {
       <TopBar
         crumbs={[{ label: "Nimbus Commerce", href: "/" }, { label: "Analytics" }]}
         agentStatus={simulation.status}
+        simulatedNow={clock.now().toISOString()}
         showRunAgent={false}
       />
       <div className="content">
         <PageHeader
           title="Analytics"
-          subtitle="Four different quantities, deliberately never added together. Only recovered revenue is money that has genuinely arrived."
+          subtitle="Revenue performance across the recovery pipeline."
         />
 
         {/* ------------------------------------------------- metric strip */}
@@ -49,26 +52,32 @@ export default async function AnalyticsPage() {
             <div className="m-value" data-testid="analytics-opportunity">
               {formatRupees(analytics.opportunityValuePaise)}
             </div>
-            <div className="m-note">
-              POTENTIAL · detected in the merchant&apos;s synthetic payment history
+            <div className="m-note" title="POTENTIAL · detected in the merchant's synthetic payment history">
+              Detected in payment history
             </div>
           </div>
           <div className="metric is-estimate">
             <div className="m-label">Expected<span className="m-tag">Est</span></div>
             <div className="m-value">{formatRupees(analytics.expectedNetPaise)}</div>
-            <div className="m-note">ESTIMATE · what the estimator projected</div>
+            <div className="m-note" title="ESTIMATE · what the estimator projected">
+              Estimator projection
+            </div>
           </div>
           <div className="metric is-actual">
             <div className="m-label">Executed<span className="m-tag actual">Actual</span></div>
             <div className="m-value">{analytics.funnel.executed}</div>
-            <div className="m-note">ACTUAL · links created at the provider</div>
+            <div className="m-note" title="ACTUAL · links created at the provider">
+              Links created at the provider
+            </div>
           </div>
           <div className="metric is-actual">
             <div className="m-label">Recovered<span className="m-tag actual">Actual</span></div>
             <div className="m-value" data-testid="analytics-recovered">
               {formatRupees(analytics.recoveredAmountPaise)}
             </div>
-            <div className="m-note">ACTUAL · the only figure called revenue</div>
+            <div className="m-note" title="ACTUAL · the only figure called revenue">
+              Confirmed by payment events
+            </div>
           </div>
         </div>
 
@@ -94,12 +103,7 @@ export default async function AnalyticsPage() {
           <div className="col-4">
             <div className="panel">
               <div className="panel-head"><h2>Attributed payments</h2></div>
-              <div className="panel-body" style={{ paddingBottom: 8 }}>
-                <p className="panel-note">
-                  A payment counts only when attribution resolves confidently. Ambiguous
-                  evidence produces no credit at all.
-                </p>
-              </div>
+
               <table>
                 <tbody>
                   <tr>
@@ -123,16 +127,13 @@ export default async function AnalyticsPage() {
         {/* ----------------------------------------------------- learning */}
         <div className="panel">
           <div className="panel-head">
-            <h2>Playbook learning</h2>
+            <h2>Playbook performance</h2>
             <span className="spacer" />
-            <span className="mono">Beta posterior per playbook</span>
+            <span className="mono" title="Seeded priors versus observed outcomes. The next estimator run reads the current rate.">
+              seeded vs observed
+            </span>
           </div>
-          <div className="panel-body" style={{ paddingBottom: 8 }}>
-            <p className="panel-note" style={{ margin: 0 }}>
-              Seeded priors versus what has actually been observed. The next estimator run reads
-              the current rate, so an outcome here changes what the agent proposes next.
-            </p>
-          </div>
+
           <div className="table-wrap">
             <table data-testid="learning-table">
               <thead>

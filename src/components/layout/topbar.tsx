@@ -2,19 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Activity, ChevronRight, Clock, Play } from "lucide-react";
+import { Activity, ChevronRight, Play } from "lucide-react";
 
 /**
  * Application header.
  *
  * Chrome, not content: a breadcrumb trail, the environment the session is
- * really in, and the one action that starts work. The page's title lives in
- * the content area (see PageHeader) so every route shares a left edge and the
- * header stays the same height everywhere.
+ * genuinely in, one clock, and the single action that starts work. Page titles
+ * live in the content area so every route shares a left edge and the bar keeps
+ * a fixed height everywhere.
  *
- * The Run Agent loading copy names the stage the request is genuinely in — the
- * server really runs detector, then estimator, then reasoner, then guardrails —
- * so the labels track real work rather than decorating a wait.
+ * The Run agent loading copy names the stage the request is really in — the
+ * server runs detector, then estimator, then reasoner, then guardrails — so
+ * the labels track actual work rather than decorating a wait.
  */
 const STAGES = [
   "Scanning payment history…",
@@ -25,15 +25,33 @@ const STAGES = [
 
 export interface Crumb { label: string; href?: string }
 
+/**
+ * The simulation clock, formatted once.
+ *
+ * Every timestamp in the product is on this clock — the header, the activity
+ * feed, the audit stream. Showing a simulated clock in the header while
+ * stamping the feed from the machine's wall clock made the two disagree, which
+ * is simply wrong to read.
+ */
+export function formatSimulated(iso: string): string {
+  const date = new Date(iso);
+  const day = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
+  }).format(date).replace(/ /g, " ");
+  const time = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata",
+  }).format(date);
+  return `${day} · ${time}`;
+}
+
 export function TopBar({
-  crumbs, agentStatus, showRunAgent = true, simulationTime, environment = "Demo",
+  crumbs, agentStatus, showRunAgent = true, simulatedNow,
 }: {
   crumbs: Crumb[];
   agentStatus: "IDLE" | "ACTIVE";
   showRunAgent?: boolean;
-  /** Demo clock, shown where the route has one. */
-  simulationTime?: string;
-  environment?: string;
+  /** ISO instant from the simulation clock. */
+  simulatedNow?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -71,8 +89,8 @@ export function TopBar({
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;
           return (
-            <span key={`${crumb.label}-${index}`} className="row" style={{ gap: 6 }}>
-              {index > 0 && <ChevronRight size={13} className="crumb-sep" />}
+            <span key={`${crumb.label}-${index}`} className="row" style={{ gap: 5 }}>
+              {index > 0 && <ChevronRight size={12} className="crumb-sep" />}
               {crumb.href && !last ? (
                 <a href={crumb.href} className="crumb">{crumb.label}</a>
               ) : (
@@ -84,26 +102,25 @@ export function TopBar({
       </nav>
 
       <div className="right">
-        {simulationTime && (
-          <span className="env-chip" title="Simulated clock for the demo session">
-            <Clock size={12} strokeWidth={2} />
-            <span className="mono" data-testid="simulation-time">{simulationTime}</span>
+        {simulatedNow && (
+          <span className="clock" title="The demo's simulation clock. Every timestamp uses it.">
+            <span className="clock-kicker">Simulation</span>
+            <span className="clock-value mono" data-testid="simulation-time">
+              {formatSimulated(simulatedNow)}
+            </span>
           </span>
         )}
 
         <span className="env-chip" data-testid="env-demo">
           <span className={`status-dot ${agentStatus === "ACTIVE" ? "active pulse" : "idle"}`} />
-          {environment} environment
+          Demo environment
         </span>
 
         {showRunAgent && (
-          <>
-            <span className="topbar-divider" />
-            <button className="primary" onClick={run} disabled={busy} data-testid="run-agent">
-              <Play size={13} strokeWidth={2.6} />
-              {busy ? STAGES[stage] : "Run agent"}
-            </button>
-          </>
+          <button className="primary" onClick={run} disabled={busy} data-testid="run-agent">
+            <Play size={13} strokeWidth={2.6} />
+            {busy ? STAGES[stage] : "Run agent"}
+          </button>
         )}
       </div>
 
@@ -131,14 +148,20 @@ export function TopBar({
 /**
  * The page's own header, on the content's left edge.
  *
- * Separating this from the top bar is what keeps the chrome a fixed height
- * while page titles stay full-size and consistently aligned across routes.
+ * Separate from the top bar so chrome keeps a fixed height while page titles
+ * stay full size and consistently aligned across routes.
  */
 export function PageHeader({
-  title, subtitle, actions,
-}: { title: string; subtitle?: string; actions?: React.ReactNode }) {
+  title, subtitle, actions, bare = false,
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: React.ReactNode;
+  /** Drop the rule when the section below brings its own. */
+  bare?: boolean;
+}) {
   return (
-    <div className="page-head">
+    <div className={`page-head${bare ? " bare" : ""}`}>
       <div className="titles">
         <h1 className="page-title">{title}</h1>
         {subtitle && <div className="page-sub">{subtitle}</div>}

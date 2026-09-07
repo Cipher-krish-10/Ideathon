@@ -7,6 +7,7 @@ import { formatPercent, formatRupees } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { getOpportunityDetail } from "@/server/services/read.service";
 import { getSimulationState } from "@/server/services/simulation";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,10 @@ export const dynamic = "force-dynamic";
 export default async function OpportunityPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
-  const [opportunity, simulation] = await Promise.all([
+  const [opportunity, simulation, clock] = await Promise.all([
     getOpportunityDetail(session.merchantId, id),
     getSimulationState(session.merchantId),
+    getSessionProjection(session.merchantId),
   ]);
   if (!opportunity) notFound();
 
@@ -39,6 +41,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
           { label: "Evidence" },
         ]}
         agentStatus={simulation.status}
+        simulatedNow={clock.now().toISOString()}
         showRunAgent={false}
       />
       <div className="content">

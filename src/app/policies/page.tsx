@@ -4,6 +4,7 @@ import { formatDateTime } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { getPolicySnapshot } from "@/server/services/policy.service";
 import { getSimulationState } from "@/server/services/simulation";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function PoliciesPage() {
   const session = await requireSession();
-  const [snapshot, simulation] = await Promise.all([
+  const [snapshot, simulation, clock] = await Promise.all([
     getPolicySnapshot(session.merchantId),
     getSimulationState(session.merchantId),
+    getSessionProjection(session.merchantId),
   ]);
 
   return (
@@ -26,6 +28,7 @@ export default async function PoliciesPage() {
       <TopBar
         crumbs={[{ label: "Nimbus Commerce", href: "/" }, { label: "Policies" }]}
         agentStatus={simulation.status}
+        simulatedNow={clock.now().toISOString()}
         showRunAgent={false}
       />
       <div className="content">

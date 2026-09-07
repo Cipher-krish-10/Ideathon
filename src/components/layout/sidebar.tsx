@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3, ChevronsUpDown, FileClock, LayoutDashboard,
-  LifeBuoy, ShieldAlert, SlidersHorizontal, Target, Zap,
+  SlidersHorizontal, Target, Zap,
 } from "lucide-react";
 
 /**
@@ -97,18 +97,20 @@ export function Sidebar({
       <div className="sb-foot">
         {/* Always visible. There is no live-mode code path in this build, and
             the merchant should never have to wonder which mode they are in. */}
+        {/*
+          * A persistent fact, not an alert. Amber says "pay attention", and
+          * something that is always true does not deserve attention every
+          * second the app is open — a filled amber block down here was the
+          * loudest object in the shell. A dot and a line of text is enough,
+          * and the guardrail table still shouts when a rule actually fires.
+          */}
         <div className="sb-env test-banner" title="Razorpay Test Mode · no live money can move">
-          <ShieldAlert strokeWidth={2.2} />
+          <span className="sb-env-dot" />
           <span className="sb-env-text">
-            <span className="sb-env-title">{mode} mode</span>
+            <span className="sb-env-title">{mode} environment</span>
             <span className="sb-env-detail">Razorpay Test Mode · no live money can move</span>
           </span>
         </div>
-
-        <a className="sb-item" href="/docs" onClick={(event) => event.preventDefault()}>
-          <LifeBuoy strokeWidth={1.8} />
-          <span>Help &amp; docs</span>
-        </a>
 
         <div className="sb-user">
           <span className="sb-avatar">{initials(userName)}</span>

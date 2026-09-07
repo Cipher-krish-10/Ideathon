@@ -48,6 +48,8 @@ interface EstimateView {
 
 export interface DecisionPacketData {
   id: string; state: string; version: number; reasoningMode: string; mode: string;
+  /** Simulation clock, so this screen agrees with every other one. */
+  simulatedNow: string;
   targetCount: number; createdAt: string; approvedAt: string | null; expiresAt: string | null;
   opportunity: {
     id: string; affectedCustomerCount: number; recoverableAmountPaise: number;
@@ -220,6 +222,7 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
           { label: "Decision packet" },
         ]}
         agentStatus="ACTIVE"
+        simulatedNow={packet.simulatedNow}
         showRunAgent={false}
       />
 
@@ -558,23 +561,6 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
             )}
           </div>
 
-          {decidable && (
-            <div className="panel-foot">
-              <span className="muted" style={{ fontSize: 11.5 }}>
-                Approving records your authorization. It does not move money.
-              </span>
-              <span className="spacer" />
-              <button className="danger" disabled={busy} data-testid="reject-button"
-                      onClick={() => decide("reject")}>
-                <XCircle size={14} />Reject
-              </button>
-              <button className="approve" disabled={busy} data-testid="approve-button"
-                      onClick={() => decide("approve")}>
-                <ShieldCheck size={15} />
-                {busy ? "Checking guardrails…" : "Approve action"}
-              </button>
-            </div>
-          )}
         </div>
 
         {/* ===================================================== execution */}
@@ -760,6 +746,36 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ================================================= authorization ===
+         * Sticky, because on a screen whose entire purpose is one decision,
+         * making someone scroll back up to find the button is a real cost.
+         * The summary restates exactly what is being authorised, so the figure
+         * and the button are never separated.
+         */}
+        {decidable && (
+          <div className="actionbar">
+            <span className="ab-summary">
+              <span className="ab-title">
+                Authorize {packet.recommendation.playbookName}
+              </span>
+              <span className="ab-detail">
+                {packet.targetCount} customers · {formatRupees(selected.expectedNetPaise)} expected
+                net · approving records consent, it does not move money
+              </span>
+            </span>
+            <span className="spacer" />
+            <button className="danger" disabled={busy} data-testid="reject-button"
+                    onClick={() => decide("reject")}>
+              <XCircle size={14} />Reject
+            </button>
+            <button className="approve" disabled={busy} data-testid="approve-button"
+                    onClick={() => decide("approve")}>
+              <ShieldCheck size={15} />
+              {busy ? "Checking guardrails…" : "Approve action"}
+            </button>
           </div>
         )}
 

@@ -6,6 +6,7 @@ import { formatDateTime, formatRupees } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { listOpportunities } from "@/server/services/read.service";
 import { getSimulationState } from "@/server/services/simulation";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function OpportunitiesPage() {
   const session = await requireSession();
-  const [opportunities, simulation] = await Promise.all([
+  const [opportunities, simulation, clock] = await Promise.all([
     listOpportunities(session.merchantId),
     getSimulationState(session.merchantId),
+    getSessionProjection(session.merchantId),
   ]);
 
   return (
@@ -28,6 +30,7 @@ export default async function OpportunitiesPage() {
       <TopBar
         crumbs={[{ label: "Nimbus Commerce", href: "/" }, { label: "Opportunities" }]}
         agentStatus={simulation.status}
+        simulatedNow={clock.now().toISOString()}
       />
       <div className="content">
         <PageHeader

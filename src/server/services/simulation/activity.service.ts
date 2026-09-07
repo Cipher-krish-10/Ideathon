@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/server/db";
+import { getSessionProjection } from "./session-time";
 import type { PrismaClient } from "@/server/db";
 
 /**
@@ -21,7 +22,10 @@ export type ActivityPhase =
 
 export interface ActivityEntry {
   seq: number;
+  /** On the SIMULATION clock, so the feed and the header agree. */
   at: string;
+  /** The real instant the audit row was written. Never discarded. */
+  realAt: string;
   phase: ActivityPhase;
   /** What a person would say happened. */
   label: string;
@@ -199,6 +203,9 @@ export async function getActivityFeed(
       .map((event) => event.id),
   );
 
+  // One clock across the whole product. See session-time.ts for why.
+  const clock = await getSessionProjection(merchantId, db);
+
   const feed: ActivityEntry[] = [];
   for (const entry of entries) {
     const mapping = MAPPINGS[entry.action];
@@ -208,7 +215,8 @@ export async function getActivityFeed(
     const after = (entry.after ?? {}) as Record<string, unknown>;
     feed.push({
       seq: Number(entry.seq),
-      at: entry.createdAt.toISOString(),
+      at: clock.project(entry.createdAt).toISOString(),
+      realAt: entry.createdAt.toISOString(),
       phase: mapping.phase,
       label: mapping.label,
       detail: mapping.detail?.(after) ?? null,

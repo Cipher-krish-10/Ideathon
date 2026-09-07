@@ -6,6 +6,7 @@ import { decisionPill, formatDateTime, formatRupees } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { listInterventions } from "@/server/services/read.service";
 import { getSimulationState } from "@/server/services/simulation";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function InterventionsPage() {
   const session = await requireSession();
-  const [interventions, simulation] = await Promise.all([
+  const [interventions, simulation, clock] = await Promise.all([
     listInterventions(session.merchantId),
     getSimulationState(session.merchantId),
+    getSessionProjection(session.merchantId),
   ]);
 
   const pending = interventions.filter((i) => i.state === "PENDING_APPROVAL").length;
@@ -30,6 +32,7 @@ export default async function InterventionsPage() {
       <TopBar
         crumbs={[{ label: "Nimbus Commerce", href: "/" }, { label: "Interventions" }]}
         agentStatus={simulation.status}
+        simulatedNow={clock.now().toISOString()}
       />
       <div className="content">
         <PageHeader

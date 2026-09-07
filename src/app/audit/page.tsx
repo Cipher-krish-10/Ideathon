@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { listAuditEntries } from "@/server/services/read.service";
 import { getSimulationState } from "@/server/services/simulation";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function AuditPage() {
   const session = await requireSession();
-  const [audit, simulation] = await Promise.all([
+  const [audit, simulation, clock] = await Promise.all([
     listAuditEntries(session.merchantId, 200),
     getSimulationState(session.merchantId),
+    getSessionProjection(session.merchantId),
   ]);
 
   return (
@@ -27,6 +29,7 @@ export default async function AuditPage() {
       <TopBar
         crumbs={[{ label: "Nimbus Commerce", href: "/" }, { label: "Audit" }]}
         agentStatus={simulation.status}
+        simulatedNow={clock.now().toISOString()}
         showRunAgent={false}
       />
       <div className="content">
@@ -36,22 +39,23 @@ export default async function AuditPage() {
         />
 
         {/* The trust claim, made verifiable rather than decorative. */}
-        <div className="panel">
-          <div className={`control-status ${audit.verified ? "ok" : "bad"}`}>
-            <span className="ico">
-              {audit.verified ? <ShieldCheck size={15} /> : <ShieldAlert size={15} />}
+        {/* The trust claim, stated once and prominently — it is the reason
+            this page exists, and it is verifiable rather than asserted. */}
+        <div className={`integrity ${audit.verified ? "ok" : "bad"}`}>
+          <span className="ico">
+            {audit.verified ? <ShieldCheck size={19} /> : <ShieldAlert size={19} />}
+          </span>
+          <span className="integrity-text">
+            <span className="integrity-kicker">Audit integrity</span>
+            <span className="integrity-verdict">
+              {audit.verified ? "Verified" : "Chain broken"}
             </span>
-            <span>
-              <span className="verdict">
-                {audit.verified ? "Integrity verified" : "Chain broken"}
-              </span>
-              <span className="detail">
-                {audit.entryCount} events recomputed from scratch on this request.
-              </span>
-            </span>
-            <span className="spacer" />
-            <span className="badge badge-neutral">sha256 chain</span>
-          </div>
+          </span>
+          <span className="integrity-facts">
+            <span><b>{audit.entryCount}</b> events</span>
+            <span>SHA-256 chain {audit.verified ? "intact" : "broken"}</span>
+            <span>recomputed on this request</span>
+          </span>
         </div>
 
         <div className="panel">

@@ -49,11 +49,17 @@ test.describe("RevenuePilot demo flow", () => {
     await page.goto("/");
 
     await expect(page.getByText("₹5,14,274.00").first()).toBeVisible();
-    // The qualifying-customer count is shown bound to its meaning, never as a
-    // bare figure the reader has to interpret.
-    await expect(page.getByText("26 qualifying customers").first()).toBeVisible();
-    // Potential and realised value must be visibly different things.
-    await expect(page.getByText(/Potential, from merchant history/)).toBeVisible();
+    // Counts are bound to the nouns they count, and the hero shows the
+    // detector DISCRIMINATING: 26 recoverable out of 66 failed transactions.
+    // A detector that reported only its positives would be indistinguishable
+    // from one that counted every failure, so both figures must be present.
+    const facts = page.locator(".hero-facts");
+    await expect(facts).toContainText("26 customers");
+    await expect(facts).toContainText("26 recoverable");
+    await expect(facts).toContainText("66 failed transactions");
+    // Potential and realised value must be visibly different things: the
+    // headline figure is tagged POTENTIAL, recovered revenue ACTUAL.
+    await expect(page.locator(".hero-label").getByText("Potential")).toBeVisible();
     await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
     await expect(page.getByText("ACTUAL · confirmed by payment events")).toBeVisible();
   });
@@ -246,7 +252,7 @@ test.describe("RevenuePilot demo flow", () => {
     await expect(page.getByTestId("historical-opportunity")).toHaveText("₹5,14,274.00");
     await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
     await expect(page.getByTestId("simulation-time")).toBeVisible();
-    await expect(page.getByText("Potential, from merchant history")).toBeVisible();
+    await expect(page.locator(".hero-label").getByText("Potential")).toBeVisible();
 
     // The feed already shows the agent run performed by demo:setup.
     await expect(page.getByTestId("activity-feed")).toBeVisible();
@@ -290,7 +296,13 @@ test.describe("RevenuePilot demo flow", () => {
     await page.goto("/analytics");
     await expect(page.getByTestId("analytics-opportunity")).toHaveText("₹5,14,274.00");
     await expect(page.getByTestId("analytics-recovered")).not.toHaveText("₹0.00");
-    await expect(page.getByText("POTENTIAL · detected in the merchant's synthetic payment history")).toBeVisible();
+    // The long definition moved into a tooltip, but the PROVENANCE stays on
+    // screen: the opportunity figure is tagged Potential and recovered revenue
+    // is tagged Actual. Those two must never be confusable at a glance.
+    const opportunityMetric = page.locator(".metric", { has: page.getByTestId("analytics-opportunity") });
+    await expect(opportunityMetric.locator(".m-tag")).toHaveText("Potential");
+    const recoveredMetric = page.locator(".metric", { has: page.getByTestId("analytics-recovered") });
+    await expect(recoveredMetric.locator(".m-tag")).toHaveText("Actual");
     await expect(page.getByTestId("learning-table")).toBeVisible();
   });
 
@@ -312,6 +324,9 @@ test.describe("RevenuePilot demo flow", () => {
   test("audit page verifies the hash chain", async ({ page }) => {
     resetDemo();
     await page.goto("/audit");
-    await expect(page.getByText("Integrity verified")).toBeVisible();
+    const integrity = page.locator(".integrity");
+    await expect(integrity).toHaveClass(/\bok\b/);
+    await expect(integrity.getByText("Verified", { exact: true })).toBeVisible();
+    await expect(integrity).toContainText("SHA-256 chain intact");
   });
 });

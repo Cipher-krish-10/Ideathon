@@ -113,7 +113,7 @@ export function PolicyEditor({
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2>Merchant safety controls</h2>
+        <h2>Risk profile</h2>
         <span className="badge badge-blue">v{activeVersion} active</span>
         <span className="spacer" />
         {dirty && <span className="badge badge-warn">Unsaved changes</span>}
@@ -135,12 +135,12 @@ export function PolicyEditor({
       {GROUPS.map((group) => {
         const Icon = group.icon;
         return (
-          <div key={group.title} style={{ marginBottom: "var(--s-6)" }}>
-            <div className="row" style={{ gap: 7, marginBottom: 2 }}>
-              <Icon size={13} color="var(--ink-400)" strokeWidth={2} />
-              <strong style={{ fontSize: 12.5, color: "var(--ink-900)" }}>{group.title}</strong>
+          <div className="policy-group" key={group.title}>
+            <div className="row" style={{ gap: 7 }}>
+              <Icon size={14} color="var(--ink-400)" strokeWidth={2} />
+              <span className="policy-group-title">{group.title}</span>
             </div>
-            <p className="muted" style={{ fontSize: 12, margin: "0 0 10px 20px" }}>{group.note}</p>
+            <p className="policy-group-note">{group.note}</p>
 
             {group.rules.map((ruleId) => {
               const config = draft[ruleId];
@@ -149,30 +149,29 @@ export function PolicyEditor({
               const editable = typeof limit === "number";
               return (
                 <div className="policy-row" key={ruleId}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0" }}>
-                    <span className={config.severity === "BLOCK" ? "control-ico stop" : "control-ico warn"}
-                          aria-hidden="true">
-                      <ShieldCheck strokeWidth={3} />
-                    </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0" }}>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span className="control-name">{RULE_LABELS[ruleId] ?? ruleId}</span>
-                      <div className="mono" style={{ fontSize: 10.5 }}>{ruleId}</div>
+                      {/* The human label IS the control. The identifier is a
+                          reference for an engineer reading an evaluation, so
+                          it sits underneath in the smallest type on the page. */}
+                      <span className="pr-name">{RULE_LABELS[ruleId] ?? ruleId}</span>
+                      <span className="pr-id">{ruleId}</span>
                     </span>
                     <span
                       className="mono"
-                      style={{ fontSize: 10.5, letterSpacing: ".05em" }}
+                      style={{ fontSize: 10, letterSpacing: ".05em" }}
                       title={
                         config.severity === "BLOCK"
-                          ? "Breaching this rule blocks the action outright"
-                          : "Breaching this rule requires a human decision"
+                          ? "Breaching this control blocks the action outright"
+                          : "Breaching this control requires a human decision"
                       }
                     >
                       {String(config.severity)}
                     </span>
                     {editable ? (
-                      <span className="row" style={{ gap: 8 }}>
+                      <span className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
                         <input
-                          type="text" style={{ width: 132 }}
+                          type="text" style={{ width: 116 }}
                           data-testid={`limit-${ruleId}`} value={String(limit)}
                           aria-label={`${RULE_LABELS[ruleId] ?? ruleId} limit`}
                           onChange={(event) => {
@@ -180,12 +179,14 @@ export function PolicyEditor({
                             if (Number.isFinite(parsed)) setLimit(ruleId, parsed);
                           }}
                         />
-                        <span className="mono" style={{ minWidth: 82 }}>
+                        {/* The unit, in the reader's terms rather than the
+                            database's: rupees, not paise; percent, not bps. */}
+                        <span className="policy-unit">
                           {MONEY_RULES.has(ruleId)
                             ? formatRupees(limit as number)
                             : ruleId === "MAX_DISCOUNT_BPS"
                               ? `${((limit as number) / 100).toFixed(2)}%`
-                              : ""}
+                              : "count"}
                         </span>
                       </span>
                     ) : (

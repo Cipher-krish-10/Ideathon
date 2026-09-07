@@ -116,8 +116,8 @@
   --t-slow: 320ms;
 
   /* --- Structure ----------------------------------------------------------- */
-  --sidebar-w:  240px;
-  --topbar-h:   52px;
+  --sidebar-w:  228px;
+  --topbar-h:   48px;
   --content-max: 1400px;
   --gutter:     var(--s-7);
 
@@ -271,23 +271,29 @@ a:hover { color: var(--blue-700); }
 
 .sb-foot { padding: var(--s-3); border-top: 1px solid var(--line); flex-shrink: 0; }
 
-/* Environment status — the one persistent safety claim in the product. */
+/*
+ * Environment status.
+ *
+ * The one persistent safety claim in the product, and precisely because it is
+ * persistent it must be quiet: a filled amber card that is always true trains
+ * people to stop seeing amber, which is the colour that has to work when a
+ * guardrail actually fires.
+ */
 .sb-env {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--warn-100);
-  background: var(--warn-50);
-  border-radius: var(--r-md);
-  margin-bottom: var(--s-2);
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  margin-bottom: var(--s-1);
 }
-.sb-env svg { width: 13px; height: 13px; color: var(--warn-500); flex-shrink: 0; }
+.sb-env-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: var(--warn-500); margin-top: 5px;
+}
 .sb-env-text { display: block; min-width: 0; }
 .sb-env-title {
   display: block;
-  font-size: 11px; font-weight: 650; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--warn-600); line-height: 1.3;
+  font-size: 11.5px; font-weight: 550; color: var(--ink-700); line-height: 1.35;
 }
-.sb-env-detail { display: block; font-size: 11px; color: var(--warn-600); opacity: .8; line-height: 1.35; }
+.sb-env-detail { display: block; font-size: 11px; color: var(--ink-400); line-height: 1.4; }
 
 .sb-user {
   display: flex; align-items: center; gap: var(--s-2);
@@ -349,12 +355,13 @@ a:hover { color: var(--blue-700); }
  */
 .page-head {
   display: flex; align-items: flex-end; gap: var(--s-4);
-  padding-bottom: var(--s-5);
+  padding-bottom: var(--s-4);
   margin-bottom: var(--s-5);
   border-bottom: 1px solid var(--line);
 }
+.page-head.bare { border-bottom: 0; padding-bottom: 0; margin-bottom: var(--s-5); }
 .page-head .titles { min-width: 0; }
-.page-title { font-size: 26px; font-weight: 620; letter-spacing: -.028em; color: var(--ink-900); }
+.page-title { font-size: 28px; font-weight: 620; letter-spacing: -.03em; color: var(--ink-900); line-height: 1.18; }
 .page-sub { font-size: 13.5px; color: var(--ink-500); margin-top: 3px; max-width: 74ch; }
 .page-head .actions { margin-left: auto; display: flex; gap: var(--s-2); flex-shrink: 0; }
 
@@ -365,9 +372,10 @@ a:hover { color: var(--blue-700); }
 }
 .section:first-child { margin-top: 0; }
 .section h2 {
-  font-size: 13px; font-weight: 600; letter-spacing: -.006em; color: var(--ink-900);
+  font-size: 16px; font-weight: 600; letter-spacing: -.016em; color: var(--ink-900);
 }
 .section .hint { font-size: 12.5px; color: var(--ink-400); }
+.section.tight { margin-top: var(--s-6); }
 .section .spacer { flex: 1; }
 
 /* ========================================================== PRIMITIVES === */
@@ -394,7 +402,7 @@ a:hover { color: var(--blue-700); }
 }
 .card-head { padding: 0 0 var(--s-4); margin-bottom: var(--s-4); min-height: 0; }
 .panel-head h2, .card-head h2 {
-  font-size: 12.5px; font-weight: 600; color: var(--ink-800); letter-spacing: -.004em;
+  font-size: 13px; font-weight: 600; color: var(--ink-900); letter-spacing: -.008em;
   text-transform: none;
 }
 .panel-head .spacer, .card-head .spacer { flex: 1; }
@@ -650,64 +658,70 @@ label:first-child { margin-top: 0; }
 
 /* ============================================== FLOW VISUALISATION ======= */
 /*
- * The one place in the product with real depth. Everything else is flat by
- * design, which is what lets this read as a system diagram rather than
- * decoration. The canvas draws perspective-projected nodes and particles; the
- * labels below are real DOM so they stay crisp and selectable.
+ * The agent, drawn as infrastructure. The only place in the product with real
+ * depth — everything else is deliberately flat, which is what lets this read
+ * as a system rather than as decoration.
  */
 .flow {
   position: relative;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background:
-    radial-gradient(120% 80% at 50% 0%, #fdfdff 0%, var(--surface) 55%),
-    var(--surface);
+  border-radius: var(--r-md);
+  background: var(--surface);
   overflow: hidden;
-  margin-bottom: var(--s-4);
 }
-.flow-head {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: var(--s-3) var(--s-5);
-  border-bottom: 1px solid var(--line-soft);
-}
-.flow-head .t { font-size: 12.5px; font-weight: 600; color: var(--ink-800); }
-.flow-head .spacer { flex: 1; }
-.flow-canvas-wrap { position: relative; height: 190px; }
+.flow-scene { position: relative; height: 244px; }
 .flow-canvas { display: block; width: 100%; height: 100%; }
 
-/* Stage labels sit under the canvas, aligned to the node columns. */
-.flow-legend {
-  display: flex; border-top: 1px solid var(--line-soft);
+/* No canvas: the same six stages as a static rail. */
+.flow-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 34px;
+}
+.flow-fallback span {
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 1.5px solid var(--ink-200); background: var(--surface);
+}
+.flow-fallback span.on { border-color: var(--blue-500); background: var(--blue-500); }
+
+/* Stage labels, aligned under their gates. Real DOM, always present. */
+.flow-stages {
+  display: flex; margin: 0; padding: 0; list-style: none;
+  border-top: 1px solid var(--line);
 }
 .flow-stage {
-  flex: 1; min-width: 0; padding: var(--s-3) var(--s-3) var(--s-4);
+  flex: 1; min-width: 0; padding: 9px var(--s-2) 11px;
   border-right: 1px solid var(--line-soft);
-  text-align: center;
+  position: relative;
   transition: background var(--t-base) var(--ease);
 }
 .flow-stage:last-child { border-right: 0; }
-.flow-stage .s-name {
-  font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+.flow-stage .fs-name {
+  display: block;
+  font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
   color: var(--ink-300);
-  display: flex; align-items: center; justify-content: center; gap: 5px;
-}
-.flow-stage .s-value {
-  font-size: 14px; font-weight: 580; color: var(--ink-300); margin-top: 4px;
-  letter-spacing: -.018em; font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.flow-stage.reached .s-name  { color: var(--ink-500); }
-.flow-stage.reached .s-value { color: var(--ink-900); }
-.flow-stage.here { background: var(--blue-50); }
-.flow-stage.here .s-name, .flow-stage.here .s-value { color: var(--blue-700); }
-.flow-stage.here.ai { background: var(--ai-50); }
-.flow-stage.here.ai .s-name, .flow-stage.here.ai .s-value { color: var(--ai-600); }
-
-/* Static fallback when the canvas cannot run. Same information, no motion. */
-.flow-fallback {
-  height: 190px; display: grid; place-items: center;
-  color: var(--ink-300); font-size: 12.5px;
+.flow-stage .fs-value {
+  display: block; margin-top: 2px;
+  font-size: 13.5px; font-weight: 560; letter-spacing: -.016em;
+  color: var(--ink-300); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.flow-stage.reached .fs-name  { color: var(--ink-500); }
+.flow-stage.reached .fs-value { color: var(--ink-900); }
+/* The single stage the session is actually at gets a rail, matching the
+   navigation's active language. */
+.flow-stage.here::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px;
+  background: var(--blue-500);
+}
+.flow-stage.here .fs-name, .flow-stage.here .fs-value { color: var(--blue-700); }
+.flow-stage.here.ai::before { background: var(--ai-500); }
+.flow-stage.here.ai .fs-name, .flow-stage.here.ai .fs-value { color: var(--ai-600); }
+/* A refusal is a different outcome from a pending decision, and the rail says
+   so without the reader having to find the text. */
+.flow-stage.here.stopped::before { background: var(--stop-500); }
+.flow-stage.here.stopped .fs-name, .flow-stage.here.stopped .fs-value { color: var(--stop-600); }
 
 /* ============================================= ACTIVITY / TIMELINE ======= */
 /*
@@ -928,6 +942,7 @@ ul.risks li::marker { color: var(--ink-300); }
   .sb-workspace { justify-content: center; padding: var(--s-2); margin: var(--s-2); width: calc(100% - var(--s-4)); }
   .sb-brand { justify-content: center; padding: 0; }
   .sb-env { justify-content: center; padding: var(--s-2); }
+  .sb-env-dot { margin-top: 0; }
   .sb-user { justify-content: center; }
   .funnel-meaning { display: none; }
 }
@@ -969,3 +984,212 @@ ul.risks li::marker { color: var(--ink-300); }
 .policy-row:last-child { border-bottom: 0; }
 .policy-row .control-name { font-size: 13px; }
 .policy-row input[type="text"] { height: 30px; font-family: var(--mono); font-size: 12.5px; }
+
+/* ================================================ COMMAND CONSOLE ======== */
+/*
+ * The homepage composition.
+ *
+ * RevenuePilot is an action console, not an analytics dashboard: the merchant
+ * arrives asking "what should I approve right now?". So the page opens with
+ * the opportunity and the action, and the supporting numbers come after —
+ * sitting directly on the page rather than in four floating tiles, which is
+ * most of what made the previous version read as a template.
+ */
+.greet { margin-bottom: var(--s-6); }
+.greet h1 {
+  font-size: 28px; font-weight: 620; letter-spacing: -.03em; color: var(--ink-900);
+  line-height: 1.18;
+}
+.greet p { margin: 5px 0 0; font-size: 14px; color: var(--ink-500); max-width: 68ch; }
+
+/* The hero: the one figure the whole product exists to surface. No card. */
+.hero {
+  display: flex; align-items: flex-end; gap: var(--s-8);
+  padding-bottom: var(--s-5);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.hero-main { min-width: 0; }
+.hero-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-400);
+}
+.hero-value {
+  font-size: 52px; font-weight: 620; letter-spacing: -.045em; line-height: 1.02;
+  color: var(--ink-900); font-variant-numeric: tabular-nums;
+  margin-top: 6px; display: block;
+}
+.hero-facts {
+  display: flex; gap: var(--s-5); margin-top: var(--s-3);
+  font-size: 13px; color: var(--ink-500);
+}
+.hero-facts b {
+  font-weight: 600; color: var(--ink-900); font-variant-numeric: tabular-nums;
+}
+.hero-actions { margin-left: auto; display: flex; gap: var(--s-2); align-items: center; }
+
+/*
+ * Secondary metrics: divider-separated columns sitting directly on the page.
+ * Not cards — these support the hero, they do not compete with it.
+ */
+.strip {
+  display: flex; flex-wrap: wrap;
+  padding: var(--s-4) 0 var(--s-5);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s-6);
+}
+.strip > .s-item {
+  flex: 1 1 160px; min-width: 0;
+  padding: 0 var(--s-5);
+  border-left: 1px solid var(--line);
+}
+.strip > .s-item:first-child { padding-left: 0; border-left: 0; }
+.s-item .si-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--ink-500); font-weight: 500;
+}
+.s-item .si-value {
+  font-size: 21px; font-weight: 600; letter-spacing: -.028em; margin-top: 4px;
+  color: var(--ink-900); font-variant-numeric: tabular-nums; line-height: 1.2;
+}
+.s-item .si-note { font-size: 11.5px; color: var(--ink-400); margin-top: 3px; }
+
+/* The console: the agent scene beside its activity log. */
+.console { display: grid; gap: var(--s-4); grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1120px) { .console { grid-template-columns: minmax(0, 1fr); } }
+
+/*
+ * CURRENT vs PREVIOUSLY EXECUTED.
+ *
+ * These are different operations and must never look like the same one. A
+ * blocked proposal sitting next to a successful execution, styled identically,
+ * is genuinely misleading about what the agent just did.
+ */
+.state-split { display: flex; align-items: stretch; border-top: 1px solid var(--line); }
+.state-block { flex: 1; min-width: 0; padding: var(--s-4); }
+.state-block + .state-block { border-left: 1px solid var(--line); }
+.state-kicker {
+  font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-300);
+}
+.state-headline {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 14px; font-weight: 580; color: var(--ink-900); margin-top: 6px;
+  letter-spacing: -.012em;
+}
+.state-detail { font-size: 12.5px; color: var(--ink-400); margin-top: 3px; }
+.state-block.past .state-headline { color: var(--ink-500); font-weight: 500; }
+
+/* =================================================== STICKY ACTION BAR === */
+/*
+ * Authorization follows the merchant down a long packet. On a screen where the
+ * decision is the entire point, making someone scroll back to find the button
+ * is a real cost.
+ */
+.actionbar {
+  position: sticky; bottom: 0; z-index: 25;
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: rgba(255, 255, 255, .93);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  margin-top: var(--s-4);
+}
+.actionbar .ab-summary { display: block; min-width: 0; }
+.actionbar .ab-title { display: block; font-size: 13px; font-weight: 560; color: var(--ink-900); }
+.actionbar .ab-detail { display: block; font-size: 12px; color: var(--ink-400); margin-top: 1px; }
+
+/* ========================================================= POLICY ROWS === */
+/*
+ * The human label is the control; the machine identifier is a reference. An
+ * earlier version made the identifier the loudest text on the page, which is
+ * how an internal tool looks, not a product.
+ */
+.policy-row { border-bottom: 1px solid var(--line-soft); }
+.policy-row:last-child { border-bottom: 0; }
+.policy-row .pr-name { font-size: 13.5px; font-weight: 500; color: var(--ink-900); display: block; }
+.policy-row .pr-id {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-300);
+  display: block; margin-top: 1px;
+}
+.policy-row input[type="text"] {
+  height: 30px; font-family: var(--mono); font-size: 12.5px; text-align: right;
+}
+.policy-unit { font-size: 12px; color: var(--ink-400); min-width: 84px; text-align: right; }
+.policy-group + .policy-group { margin-top: var(--s-5); padding-top: var(--s-5); border-top: 1px solid var(--line); }
+.policy-group-title { font-size: 13px; font-weight: 600; color: var(--ink-900); }
+.policy-group-note { font-size: 12px; color: var(--ink-400); margin: 2px 0 var(--s-2); }
+
+@media (max-width: 720px) {
+  .hero { gap: var(--s-4); }
+  .hero-value { font-size: 38px; }
+  .hero-actions { margin-left: 0; width: 100%; }
+  .strip > .s-item { flex-basis: 50%; padding: var(--s-2) var(--s-4); border-left: 0; }
+  .strip > .s-item:first-child { padding-left: var(--s-4); }
+  .state-split { flex-direction: column; }
+  .state-block + .state-block { border-left: 0; border-top: 1px solid var(--line); }
+  .flow-scene { height: 210px; }
+  .flow-stages { flex-wrap: wrap; }
+  .flow-stage { flex-basis: 33.333%; }
+  .actionbar { flex-wrap: wrap; }
+}
+
+/* =========================================================== TOP CLOCK === */
+/*
+ * One clock, stated once. Two lines so the label never competes with the
+ * value, and mono digits so it does not reflow as the minute changes.
+ */
+.clock { display: flex; flex-direction: column; line-height: 1.25; text-align: right; }
+.clock-kicker {
+  font-size: 9.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-300);
+}
+.clock-value { font-size: 11.5px; color: var(--ink-700); font-variant-numeric: tabular-nums; }
+
+/* ====================================================== AUDIT INTEGRITY == */
+/*
+ * The reason the audit page exists. Stated once, at the top, at a size that
+ * matches its importance — and phrased as something that was just proven
+ * rather than something being claimed.
+ */
+.integrity {
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  margin-bottom: var(--s-4);
+  flex-wrap: wrap;
+}
+.integrity .ico {
+  width: 38px; height: 38px; border-radius: var(--r-md);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.integrity.ok  .ico { background: var(--ok-50);   color: var(--ok-600); }
+.integrity.bad .ico { background: var(--stop-50); color: var(--stop-600); }
+.integrity-text { display: block; }
+.integrity-kicker {
+  display: block;
+  font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-400);
+}
+.integrity-verdict {
+  display: block; font-size: 20px; font-weight: 620; letter-spacing: -.024em;
+  line-height: 1.2;
+}
+.integrity.ok  .integrity-verdict { color: var(--ok-600); }
+.integrity.bad .integrity-verdict { color: var(--stop-600); }
+.integrity-facts {
+  margin-left: auto; display: flex; gap: var(--s-5);
+  font-size: 12.5px; color: var(--ink-400);
+}
+.integrity-facts b {
+  color: var(--ink-900); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+@media (max-width: 720px) {
+  .integrity-facts { margin-left: 0; flex-wrap: wrap; gap: var(--s-3); }
+}

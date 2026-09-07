@@ -3,6 +3,7 @@ import "server-only";
 import type { GuardrailPolicyRules } from "@/core/guardrails";
 import { appendAuditEntry } from "@/server/audit/audit-logger";
 import { prisma } from "@/server/db";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 
 /**
  * Guardrail policy reads and edits.
@@ -19,9 +20,13 @@ export interface PolicySnapshot {
 }
 
 export async function getPolicySnapshot(merchantId: string): Promise<PolicySnapshot | null> {
-  const policies = await prisma.guardrailPolicy.findMany({
-    where: { merchantId }, orderBy: { version: "desc" },
-  });
+  const [policies, clock] = await Promise.all([
+    prisma.guardrailPolicy.findMany({
+      where: { merchantId }, orderBy: { version: "desc" },
+    }),
+    // Displayed on the simulation clock, like every other timestamp shown.
+    getSessionProjection(merchantId),
+  ]);
   const active = policies.find((policy) => policy.isActive) ?? policies[0];
   if (!active) return null;
 
@@ -31,7 +36,7 @@ export async function getPolicySnapshot(merchantId: string): Promise<PolicySnaps
     versions: policies.map((policy) => ({
       version: policy.version,
       isActive: policy.isActive,
-      createdAt: policy.createdAt.toISOString(),
+      createdAt: clock.project(policy.createdAt).toISOString(),
     })),
   };
 }

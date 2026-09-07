@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/server/db";
+import { getSessionProjection } from "@/server/services/simulation/session-time";
 import { verifyAuditChain } from "@/server/audit/audit-logger";
 
 /**
@@ -16,6 +17,7 @@ import { verifyAuditChain } from "@/server/audit/audit-logger";
  */
 
 export async function listOpportunities(merchantId: string) {
+  const clock = await getSessionProjection(merchantId);
   const opportunities = await prisma.opportunity.findMany({
     where: { merchantId },
     orderBy: { detectedAt: "desc" },
@@ -34,7 +36,7 @@ export async function listOpportunities(merchantId: string) {
     targetCount: opportunity._count.targets,
     estimateCount: opportunity._count.estimates,
     interventionCount: opportunity._count.interventions,
-    detectedAt: opportunity.detectedAt.toISOString(),
+    detectedAt: clock.project(opportunity.detectedAt).toISOString(),
     referenceAt: opportunity.referenceAt.toISOString(),
     failureReasonBreakdown: readBreakdown(opportunity.evidence),
     exclusionCounts: readExclusions(opportunity.evidence),
@@ -42,6 +44,7 @@ export async function listOpportunities(merchantId: string) {
 }
 
 export async function getOpportunityDetail(merchantId: string, opportunityId: string) {
+  const clock = await getSessionProjection(merchantId);
   const opportunity = await prisma.opportunity.findFirst({
     where: { id: opportunityId, merchantId },
     include: {
@@ -72,7 +75,11 @@ export async function getOpportunityDetail(merchantId: string, opportunityId: st
     detectorVersion: opportunity.detectorVersion,
     affectedCustomerCount: opportunity.affectedCustomerCount,
     recoverableAmountPaise: opportunity.recoverableAmountPaise,
-    detectedAt: opportunity.detectedAt.toISOString(),
+    // detectedAt is a SESSION event -- the detector ran during this session --
+    // so it shows on the simulation clock. referenceAt and the targets'
+    // failedAt are DATASET instants from the merchant's own history: they
+    // predate the baseline and must be left exactly as recorded.
+    detectedAt: clock.project(opportunity.detectedAt).toISOString(),
     referenceAt: opportunity.referenceAt.toISOString(),
     failureReasonBreakdown: readBreakdown(opportunity.evidence),
     exclusionCounts: readExclusions(opportunity.evidence),
@@ -93,12 +100,13 @@ export async function getOpportunityDetail(merchantId: string, opportunityId: st
       id: intervention.id,
       state: intervention.state,
       reasoningMode: intervention.reasoningMode,
-      createdAt: intervention.createdAt.toISOString(),
+      createdAt: clock.project(intervention.createdAt).toISOString(),
     })),
   };
 }
 
 export async function listInterventions(merchantId: string, state?: string) {
+  const clock = await getSessionProjection(merchantId);
   const interventions = await prisma.intervention.findMany({
     where: { merchantId, ...(state ? { state: state as never } : {}) },
     orderBy: { createdAt: "desc" },
@@ -119,8 +127,8 @@ export async function listInterventions(merchantId: string, state?: string) {
     confidence: intervention.estimate.confidence,
     targetCount: intervention._count.targets,
     version: intervention.version,
-    createdAt: intervention.createdAt.toISOString(),
-    expiresAt: intervention.expiresAt?.toISOString() ?? null,
+    createdAt: clock.project(intervention.createdAt).toISOString(),
+    expiresAt: clock.projectIso(intervention.expiresAt),
   }));
 }
 
@@ -157,7 +165,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
   });
   if (!intervention) return null;
 
-  const [alternatives, llmCalls, auditEntries] = await Promise.all([
+  const [alternatives, llmCalls, auditEntries, clock] = await Promise.all([
     prisma.estimate.findMany({
       where: {
         opportunityId: intervention.opportunityId,
@@ -184,6 +192,8 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       },
       orderBy: { seq: "asc" },
     }),
+    // Session timestamps display on the simulation clock, like everywhere else.
+    getSessionProjection(merchantId),
   ]);
 
   const message = (intervention.customerMessage ?? {}) as Record<string, unknown>;
@@ -193,12 +203,13 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
     state: intervention.state,
     version: intervention.version,
     reasoningMode: intervention.reasoningMode,
+    simulatedNow: clock.now().toISOString(),
     mode: intervention.merchant.mode,
     timezone: intervention.merchant.timezone,
-    createdAt: intervention.createdAt.toISOString(),
-    proposedAt: intervention.proposedAt?.toISOString() ?? null,
-    approvedAt: intervention.approvedAt?.toISOString() ?? null,
-    expiresAt: intervention.expiresAt?.toISOString() ?? null,
+    createdAt: clock.project(intervention.createdAt).toISOString(),
+    proposedAt: clock.projectIso(intervention.proposedAt),
+    approvedAt: clock.projectIso(intervention.approvedAt),
+    expiresAt: clock.projectIso(intervention.expiresAt),
     targetCount: intervention._count.targets,
 
     opportunity: {
@@ -206,7 +217,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       affectedCustomerCount: intervention.opportunity.affectedCustomerCount,
       recoverableAmountPaise: intervention.opportunity.recoverableAmountPaise,
       detectorVersion: intervention.opportunity.detectorVersion,
-      detectedAt: intervention.opportunity.detectedAt.toISOString(),
+      detectedAt: clock.project(intervention.opportunity.detectedAt).toISOString(),
       failureReasonBreakdown: readBreakdown(intervention.opportunity.evidence),
       exclusionCounts: readExclusions(intervention.opportunity.evidence),
     },
@@ -234,7 +245,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       phase: evaluation.phase,
       decision: evaluation.decision,
       policyVersion: evaluation.policyVersion,
-      evaluatedAt: evaluation.evaluatedAt.toISOString(),
+      evaluatedAt: clock.project(evaluation.evaluatedAt).toISOString(),
       results: readRuleResults(evaluation.ruleResults),
     })),
 
@@ -254,7 +265,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
         shortUrl: artifact.shortUrl,
         amountPaise: artifact.amountPaise,
         status: artifact.status,
-        createdAt: artifact.createdAt.toISOString(),
+        createdAt: clock.project(artifact.createdAt).toISOString(),
       })),
       attempts: intervention.executionAttempts.map((attempt) => ({
         attemptNo: attempt.attemptNo,
@@ -263,7 +274,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
         error: attempt.error,
         // Truncated: enough to prove idempotency without printing a whole hash.
         idempotencyKey: `${attempt.idempotencyKey.slice(0, 12)}…`,
-        startedAt: attempt.startedAt.toISOString(),
+        startedAt: clock.project(attempt.startedAt).toISOString(),
       })),
       totalAmountPaise: intervention.razorpayArtifacts.reduce(
         (sum, artifact) => sum + artifact.amountPaise, 0,
@@ -278,7 +289,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
         confidence: record.confidence,
         attributedAmountPaise: record.attributedAmountPaise,
         note: record.note,
-        attributedAt: record.attributedAt.toISOString(),
+        attributedAt: clock.project(record.attributedAt).toISOString(),
         // Masked: enough to identify, not enough to be a copy of the record.
         providerEventId: record.webhookEvent?.providerEventId
           ? `${record.webhookEvent.providerEventId.slice(0, 10)}…`
@@ -320,7 +331,7 @@ export async function getDecisionPacket(merchantId: string, interventionId: stri
       actorType: entry.actorType,
       action: entry.action,
       entityType: entry.entityType,
-      createdAt: entry.createdAt.toISOString(),
+      createdAt: clock.project(entry.createdAt).toISOString(),
     })),
   };
 }
@@ -330,7 +341,8 @@ export async function getDashboardMetrics(merchantId: string) {
   const [
     openOpportunities, pendingApprovals, approved, blocked, rejected,
     opportunityTotals, attributed, auditChain, executedInterventions,
-    artifactTotals, expectedNet, converted, transactionCount, failedTransactionCount,
+    artifactTotals, expectedNet, converted, transactionCount, qualifyingTransactionCount,
+    failedTransactionCount,
   ] = await Promise.all([
     prisma.opportunity.count({ where: { merchantId, status: "OPEN" } }),
     prisma.intervention.count({ where: { merchantId, state: "PENDING_APPROVAL" } }),
@@ -364,6 +376,10 @@ export async function getDashboardMetrics(merchantId: string) {
     prisma.opportunityTarget.count({
       where: { opportunity: { merchantId, status: "OPEN" } },
     }),
+    // Every failed transaction in the merchant's history, recoverable or not.
+    // The gap between this and the qualifying count IS the product's claim:
+    // the detector discriminated rather than counting every failure.
+    prisma.transaction.count({ where: { merchantId, status: "FAILED" } }),
   ]);
 
   return {
@@ -392,6 +408,7 @@ export async function getDashboardMetrics(merchantId: string) {
     // The observed corpus. Counted, never asserted by the UI.
     transactionCount,
     failedTransactionCount,
+    qualifyingTransactionCount,
   };
 }
 
@@ -399,7 +416,12 @@ export async function listAuditEntries(merchantId: string, limit = 100) {
   const entries = await prisma.auditLog.findMany({
     where: { merchantId }, orderBy: { seq: "desc" }, take: limit,
   });
-  const chain = await verifyAuditChain(prisma, merchantId);
+  const [chain, clock] = await Promise.all([
+    verifyAuditChain(prisma, merchantId),
+    // Displayed on the simulation clock, like every other timestamp in the
+    // product. The stored instant is untouched; only the view moves.
+    getSessionProjection(merchantId),
+  ]);
   return {
     verified: chain.valid,
     entryCount: chain.entryCount,
@@ -409,7 +431,7 @@ export async function listAuditEntries(merchantId: string, limit = 100) {
       entityType: entry.entityType,
       entityId: entry.entityId,
       action: entry.action,
-      createdAt: entry.createdAt.toISOString(),
+      createdAt: clock.project(entry.createdAt).toISOString(),
       hash: entry.hash.slice(0, 12),
     })),
   };
