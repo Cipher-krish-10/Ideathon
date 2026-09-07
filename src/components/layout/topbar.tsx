@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Activity, Play, ShieldCheck } from "lucide-react";
+import { Activity, Play } from "lucide-react";
 
 /**
  * Page header with the primary agent action.
@@ -74,8 +74,7 @@ export function TopBar({
       </div>
 
       <div className="right">
-        <span className="badge badge-warn"><ShieldCheck />Razorpay Test Mode</span>
-        <span className="badge badge-neutral">
+        <span className="row" style={{ gap: 6, fontSize: 12, color: "var(--ink-400)" }}>
           <span className={`status-dot ${agentStatus === "ACTIVE" ? "active pulse" : "idle"}`} />
           Agent {agentStatus === "ACTIVE" ? "active" : "idle"}
         </span>

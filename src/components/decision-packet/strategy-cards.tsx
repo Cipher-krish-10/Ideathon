@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 
 import { formatPercent, formatRupees } from "@/lib/format";
@@ -21,13 +20,10 @@ export interface StrategyView {
 export function StrategyCards({ strategies }: { strategies: StrategyView[] }) {
   return (
     <div className="strategy-grid">
-      {strategies.map((strategy, index) => (
-        <motion.div
+      {strategies.map((strategy) => (
+        <div
           key={strategy.estimateId}
           className={`strategy${strategy.isSelected ? " chosen" : ""}`}
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.07, duration: 0.4 }}
         >
           {strategy.isSelected && (
             <span className="badge badge-ai" style={{ marginBottom: 10 }}>
@@ -51,7 +47,7 @@ export function StrategyCards({ strategies }: { strategies: StrategyView[] }) {
             <span>Confidence</span>
             <span><span className="badge badge-neutral">{strategy.confidence}</span></span>
           </div>
-        </motion.div>
+        </div>
       ))}
     </div>
   );

@@ -90,17 +90,14 @@ export function GuardrailPanel({
       </table>
 
       <div>
-        {results.map((rule, index) => {
+        {results.map((rule) => {
           const expanded = open === rule.ruleId;
           const tone = rule.passed ? "pass" : rule.severity === "BLOCK" ? "stop" : "warn";
           const Icon = rule.passed ? Check : rule.severity === "BLOCK" ? XCircle : AlertTriangle;
           return (
-            <motion.div
+            <div
               key={rule.ruleId}
               className="rule"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.028, duration: 0.3 }}
             >
               <button
                 className="rule-head"
@@ -150,7 +147,7 @@ export function GuardrailPanel({
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
+            </div>
           );
         })}
       </div>

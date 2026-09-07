@@ -49,9 +49,11 @@ test.describe("RevenuePilot demo flow", () => {
     await page.goto("/");
 
     await expect(page.getByText("₹5,14,274.00").first()).toBeVisible();
-    await expect(page.getByText("26", { exact: true }).first()).toBeVisible();
+    // The qualifying-customer count is shown bound to its meaning, never as a
+    // bare figure the reader has to interpret.
+    await expect(page.getByText("26 qualifying customers").first()).toBeVisible();
     // Potential and realised value must be visibly different things.
-    await expect(page.getByText("Potential, from merchant history")).toBeVisible();
+    await expect(page.getByText(/Potential, from merchant history/)).toBeVisible();
     await expect(page.getByTestId("recovered-revenue")).toHaveText("₹0.00");
     await expect(page.getByText("ACTUAL · confirmed by payment events")).toBeVisible();
   });

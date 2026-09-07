@@ -9,7 +9,7 @@
 /* ---------------------------------------------------------------- tokens -- */
 :root {
   /* Surfaces: a white canvas over a very light cool grey ground. */
-  --canvas: #f7f8fb;
+  --canvas: #fbfcfd;
   --surface: #ffffff;
   --surface-sunken: #f2f4f8;
   --surface-raised: #ffffff;
@@ -59,9 +59,12 @@
   --r-xl: 22px;
 
   /* Shadows — layered and soft, never harsh. */
-  --sh-1: 0 1px 2px rgba(16, 26, 48, .05), 0 1px 3px rgba(16, 26, 48, .04);
-  --sh-2: 0 2px 5px rgba(16, 26, 48, .06), 0 6px 16px rgba(16, 26, 48, .05);
-  --sh-3: 0 8px 20px rgba(16, 26, 48, .08), 0 18px 48px rgba(16, 26, 48, .07);
+  /* Shadows are for things that genuinely float: menus, the selected
+     strategy, a hovered row. Resting cards use a hairline border instead —
+     a page where everything is elevated reads as a template. */
+  --sh-1: none;
+  --sh-2: 0 1px 2px rgba(16, 26, 48, .04), 0 4px 12px rgba(16, 26, 48, .05);
+  --sh-3: 0 8px 20px rgba(16, 26, 48, .07), 0 18px 44px rgba(16, 26, 48, .06);
   --sh-blue: 0 6px 22px rgba(47, 107, 255, .17);
   --sh-ai: 0 8px 28px rgba(109, 74, 236, .18);
 
@@ -127,10 +130,9 @@ a:hover { color: var(--blue-700); }
 .sidebar-brand { padding: var(--s-5) var(--s-5) var(--s-4); }
 .brand-row { display: flex; align-items: center; gap: 10px; }
 .brand-mark {
-  width: 30px; height: 30px; border-radius: 9px;
-  background: linear-gradient(135deg, var(--blue-500), var(--ai-500));
-  box-shadow: var(--sh-blue);
-  display: grid; place-items: center; color: #fff; flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--ink-900); display: grid; place-items: center;
+  color: #fff; flex-shrink: 0;
 }
 .brand-name { font-weight: 650; letter-spacing: -.02em; font-size: 15px; }
 .brand-sub { font-size: 11px; color: var(--ink-400); margin-top: 1px; }
@@ -202,8 +204,8 @@ a:hover { color: var(--blue-700); }
 /* --------------------------------------------------------------- badge ---- */
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 999px;
-  font-size: 11px; font-weight: 620; letter-spacing: .015em;
+  padding: 2px 8px; border-radius: var(--r-sm);
+  font-size: 11px; font-weight: 550; letter-spacing: 0;
   border: 1px solid transparent; white-space: nowrap;
 }
 .badge svg { width: 12px; height: 12px; }
@@ -218,13 +220,15 @@ a:hover { color: var(--blue-700); }
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-1);
+  border-radius: var(--r-md);
   padding: var(--s-5);
   margin-bottom: var(--s-4);
 }
 .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--s-4); }
-.card-head h2 { font-size: 15px; margin: 0; font-weight: 620; letter-spacing: -.012em; }
+.card-head h2 {
+  font-size: 12px; margin: 0; font-weight: 650; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-500);
+}
 .card-head .spacer { flex: 1; }
 .card-note { font-size: 13px; color: var(--ink-400); margin: -6px 0 var(--s-4); }
 .card-ai {
@@ -235,44 +239,50 @@ a:hover { color: var(--blue-700); }
 
 /* ----------------------------------------------------------------- kpi ---- */
 .kpi-grid { display: grid; gap: var(--s-4); grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); }
-.kpi {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--r-lg); padding: var(--s-4) var(--s-5);
-  box-shadow: var(--sh-1); position: relative; overflow: hidden;
-  transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
-.kpi::after {
-  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
-  background: var(--line-strong);
-}
-.kpi-historical::after { background: linear-gradient(90deg, var(--ink-300), var(--ink-400)); }
-.kpi-projected::after { background: linear-gradient(90deg, var(--blue-300), var(--blue-500)); }
-.kpi-actual::after { background: linear-gradient(90deg, var(--ok-500), #35c07a); }
-.kpi-ai::after { background: linear-gradient(90deg, var(--ai-300), var(--ai-500)); }
-
+/*
+ * Metrics.
+ *
+ * No coloured stripe, no corner tag, no hover lift. The figure carries the
+ * weight and the label stays out of its way; decorating each tile identically
+ * is what makes a dashboard read as a template rather than an instrument.
+ */
+.kpi { padding: 0; position: relative; }
 .kpi .label {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .085em;
-  color: var(--ink-400); font-weight: 620;
+  font-size: 11.5px; color: var(--ink-400); font-weight: 500; letter-spacing: 0;
 }
 .kpi .value {
-  font-size: 27px; font-weight: 640; letter-spacing: -.03em;
-  margin-top: 7px; font-variant-numeric: tabular-nums; line-height: 1.15;
+  font-size: 26px; font-weight: 620; letter-spacing: -.035em;
+  margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.1;
+  color: var(--ink-900);
 }
-.kpi .value.hero { font-size: 40px; }
-.kpi .note { font-size: 11.5px; color: var(--ink-400); margin-top: 6px; }
+.kpi .value.hero { font-size: 46px; letter-spacing: -.042em; font-weight: 600; }
+.kpi .note { font-size: 11.5px; color: var(--ink-300); margin-top: 5px; }
+/* Provenance is a word, not a colour. */
 .kpi-tag {
-  position: absolute; top: var(--s-4); right: var(--s-4);
-  font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--ink-300);
+  font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-300); margin-left: 7px;
 }
+.kpi-actual .value { color: var(--ink-900); }
+.kpi-projected .value { color: var(--ink-700); }
+.kpi-historical .value { color: var(--ink-700); }
+
+/* A metric strip: hairline-separated columns rather than a grid of boxes. */
+.metric-strip {
+  display: flex; flex-wrap: wrap; gap: 0;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); overflow: hidden;
+}
+.metric-strip > * {
+  flex: 1 1 190px; padding: var(--s-4) var(--s-5);
+  border-right: 1px solid var(--line);
+}
+.metric-strip > *:last-child { border-right: 0; }
+.metric-strip > .lead { flex: 1.7 1 300px; background: var(--surface-sunken); }
 
 .section-label {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .11em;
-  color: var(--ink-400); font-weight: 680; margin: var(--s-6) 0 var(--s-3);
-  display: flex; align-items: center; gap: 9px;
+  font-size: 11.5px; letter-spacing: 0; color: var(--ink-400);
+  font-weight: 500; margin: var(--s-6) 0 var(--s-3);
 }
-.section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 /* -------------------------------------------------------------- button ---- */
 button, .btn {
@@ -281,25 +291,22 @@ button, .btn {
   background: var(--surface); color: var(--ink-700);
   padding: 9px 15px; cursor: pointer; display: inline-flex;
   align-items: center; gap: 7px;
-  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease),
-              background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
-  box-shadow: var(--sh-1);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--sh-2); border-color: var(--ink-300); }
-button:active:not(:disabled) { transform: translateY(0); box-shadow: var(--sh-1); }
+button:hover:not(:disabled) { background: var(--surface-sunken); border-color: var(--ink-300); }
+button:active:not(:disabled) { background: var(--line); }
 button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 button svg { width: 15px; height: 15px; }
 
 button.primary {
-  background: linear-gradient(180deg, var(--blue-500), var(--blue-600));
-  border-color: var(--blue-600); color: #fff; box-shadow: var(--sh-blue);
+  background: var(--blue-600); border-color: var(--blue-600); color: #fff;
 }
-button.primary:hover:not(:disabled) { box-shadow: 0 8px 26px rgba(47,107,255,.28); border-color: var(--blue-700); }
+button.primary:hover:not(:disabled) { background: var(--blue-700); border-color: var(--blue-700); }
 button.approve {
-  background: linear-gradient(180deg, #16a95c, var(--ok-600));
-  border-color: var(--ok-600); color: #fff; box-shadow: 0 6px 22px rgba(18,157,84,.22);
-  font-weight: 620; padding: 11px 22px;
+  background: var(--ink-900); border-color: var(--ink-900); color: #fff;
+  font-weight: 560; padding: 10px 20px;
 }
+button.approve:hover:not(:disabled) { background: #000; border-color: #000; }
 button.danger { background: var(--surface); border-color: #efc4c1; color: var(--stop-600); }
 button.danger:hover:not(:disabled) { background: var(--stop-50); border-color: var(--stop-500); }
 button.ghost { background: transparent; box-shadow: none; border-color: var(--line); }
@@ -392,10 +399,53 @@ ul.risks li { margin-bottom: 6px; }
 .tl-icon.bad { border-color: #f3c4c1; background: var(--stop-50); color: var(--stop-600); }
 .tl-icon.ai { border-color: var(--ai-100); background: var(--ai-50); color: var(--ai-600); }
 .tl-body { flex: 1; min-width: 0; padding-top: 4px; }
-.tl-label { font-size: 13.5px; font-weight: 520; }
-.tl-detail { font-size: 12px; color: var(--ink-400); margin-top: 2px; font-family: var(--mono); }
-.tl-time { font-size: 11px; color: var(--ink-300); font-family: var(--mono); margin-left: auto; padding-top: 6px; }
+.tl-label { display: block; font-size: 13.5px; font-weight: 520; }
+.tl-detail { display: block; font-size: 12px; color: var(--ink-400); margin-top: 3px; font-family: var(--mono); }
+.tl-time {
+  font-size: 11px; color: var(--ink-300); font-family: var(--mono);
+  margin-left: auto; padding-top: 5px; flex-shrink: 0; padding-left: var(--s-4);
+}
 .feed-scroll { max-height: 460px; overflow-y: auto; padding-right: 4px; }
+
+/* ------------------------------------------------------------- pipeline --- */
+/*
+ * The agent pipeline, drawn as an instrument: a hairline rail, real counts,
+ * and a single filled marker for where the session actually is. Pastel icon
+ * circles with a legend read as marketing; this reads as status.
+ */
+.pipeline {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface); overflow: hidden; perspective: 1000px;
+}
+.pipe-step {
+  flex: 1; min-width: 0; padding: var(--s-4) var(--s-5);
+  border-right: 1px solid var(--line); position: relative;
+  transition: background var(--t-base) var(--ease);
+}
+.pipe-step:last-child { border-right: 0; }
+.pipe-step .k {
+  font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-300); font-weight: 600; display: flex; align-items: center; gap: 6px;
+}
+.pipe-step .v {
+  font-size: 17px; font-weight: 580; margin-top: 6px; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--ink-300);
+}
+.pipe-step .bar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: transparent;
+}
+.pipe-step.reached .k { color: var(--ink-500); }
+.pipe-step.reached .v { color: var(--ink-900); }
+.pipe-step.reached .bar { background: var(--ink-300); }
+.pipe-step.here { background: var(--blue-50); }
+.pipe-step.here .k { color: var(--blue-700); }
+.pipe-step.here .v { color: var(--blue-700); }
+.pipe-step.here .bar { background: var(--blue-500); }
+.pipe-step.ai.here { background: var(--ai-50); }
+.pipe-step.ai.here .k, .pipe-step.ai.here .v { color: var(--ai-600); }
+.pipe-step.ai.here .bar { background: var(--ai-500); }
+.pipe-step.done .bar { background: var(--ok-500); }
 
 /* --------------------------------------------------------- flow diagram --- */
 .flow-stage {

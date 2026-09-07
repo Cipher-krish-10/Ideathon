@@ -32,7 +32,7 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-brand">
         <div className="brand-row">
-          <div className="brand-mark"><Sparkles size={16} strokeWidth={2.4} /></div>
+          <div className="brand-mark"><Sparkles size={14} strokeWidth={2.2} /></div>
           <div>
             <div className="brand-name">RevenuePilot</div>
             <div className="brand-sub">Merchant Growth Agent</div>
@@ -64,7 +64,7 @@ export function Sidebar({
       <div className="sidebar-foot">
         {/* Always visible. There is no live-mode code path in this build. */}
         <div className="mode-card test-banner">
-          <div className="t"><Shield size={12} strokeWidth={2.4} />{mode} mode</div>
+          <div className="t"><Shield size={11} strokeWidth={2.4} />{mode} mode</div>
           <div className="d">Razorpay Test Mode · no live money can move</div>
         </div>
         <div className="sys-status">

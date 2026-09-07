@@ -1,13 +1,12 @@
 import Link from "next/link";
-import { Activity, Sparkles } from "lucide-react";
 
 import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
-import { OpportunityHero } from "@/components/dashboard/opportunity-hero";
-import { RevenueFlow } from "@/components/dashboard/revenue-flow";
-import type { FlowPhase } from "@/components/dashboard/revenue-flow";
+import { Pipeline } from "@/components/dashboard/pipeline";
+import type { FlowPhase } from "@/components/dashboard/pipeline";
 import { DemoControls } from "@/components/demo-controls";
 import { TopBar } from "@/components/layout/topbar";
 import { Counter } from "@/components/ui/counter";
+import { RULE_EVALUATORS } from "@/core/guardrails/rules";
 import { formatRupees } from "@/lib/format";
 import { getEnv } from "@/lib/env";
 import { requireSession } from "@/server/auth/session";
@@ -21,14 +20,17 @@ export const dynamic = "force-dynamic";
 /**
  * Command Centre.
  *
- * Organised around one distinction: what the merchant's HISTORY says versus
- * what this session actually did. Historical figures are potential; session
- * figures are facts; and only an attributed payment is called revenue. The
- * layout never places the two in the same row.
+ * Deliberately not a landing page. There is no tagline, no hero copy and no
+ * grid of identically-decorated tiles — a merchant opening this wants the
+ * numbers, and marketing furniture inside an instrument is the fastest way to
+ * make a product feel generated rather than built.
+ *
+ * The one distinction the layout enforces: what the merchant's HISTORY says
+ * versus what this session actually did.
  */
 export default async function CommandCentre() {
   const session = await requireSession();
-  const [metrics, pending, simulation, activity, artifactId] = await Promise.all([
+  const [metrics, interventions, simulation, activity, artifactId] = await Promise.all([
     getDashboardMetrics(session.merchantId),
     listInterventions(session.merchantId),
     getSimulationState(session.merchantId),
@@ -36,8 +38,8 @@ export default async function CommandCentre() {
     getLatestArtifactId(session.merchantId),
   ]);
 
-  // The agent's real position in the pipeline, derived from persisted state.
-  const states = new Set(pending.map((intervention) => intervention.state));
+  // The agent's real position, derived from persisted state.
+  const states = new Set(interventions.map((intervention) => intervention.state));
   const phase: FlowPhase =
     metrics.recoveredAmountPaise > 0 ? "CONVERTED"
     : metrics.executedInterventions > 0 ? "EXECUTED"
@@ -47,8 +49,8 @@ export default async function CommandCentre() {
     : metrics.openOpportunities > 0 ? "OBSERVED"
     : "IDLE";
 
-  const awaiting = pending.filter((i) => i.state === "PENDING_APPROVAL");
-  const latest = pending[0];
+  const awaiting = interventions.filter((i) => i.state === "PENDING_APPROVAL");
+  const latest = interventions[0];
   const simulatedNow = new Date(simulation.simulatedNow);
 
   return (
@@ -62,127 +64,71 @@ export default async function CommandCentre() {
       />
 
       <div className="content">
-        {/* ---------------------------------------------------------- hero */}
-        <div style={{ marginBottom: "var(--s-5)" }}>
-          <div className="row" style={{ gap: 10, marginBottom: 10 }}>
-            <span className="badge badge-ai"><Sparkles />Autonomous merchant growth agent</span>
-            <span className="badge badge-neutral" data-testid="env-demo">Demo environment</span>
+        {/* --------------------------------------- headline figure, in place */}
+        <div className="metric-strip" style={{ marginBottom: "var(--s-5)" }}>
+          <div className="lead kpi kpi-historical" style={{ padding: "var(--s-5)" }}>
+            <div className="label">
+              Recoverable opportunity
+              <span className="kpi-tag">Potential</span>
+            </div>
+            {/* Money at risk, never presented as money earned. */}
+            <Counter className="value hero" value={metrics.recoverableAmountPaise}
+                     testId="historical-opportunity" />
+            <div className="note">
+              Potential, from merchant history · {metrics.qualifyingCustomers} qualifying customers
+            </div>
           </div>
-          <h2 style={{ fontSize: 30, margin: "0 0 6px", letterSpacing: "-.032em", fontWeight: 650 }}>
-            Find lost revenue. Choose the best intervention. Act safely.
-          </h2>
-          <p className="muted" style={{ margin: 0, fontSize: 14.5, maxWidth: 640 }}>
-            RevenuePilot reads the merchant&apos;s payment history, scores every recovery
-            strategy deterministically, and asks a human before anything moves.
-          </p>
+
+          <div className="kpi kpi-projected">
+            <div className="label">Expected recovery<span className="kpi-tag">Est</span></div>
+            <Counter className="value" value={metrics.expectedNetPaise} />
+            <div className="note">Estimator projection</div>
+          </div>
+
+          <div className="kpi kpi-actual">
+            <div className="label">Executed<span className="kpi-tag">Actual</span></div>
+            <div className="value" data-testid="executed-actions">{metrics.executedInterventions}</div>
+            <div className="note">{metrics.paymentLinksCreated} link(s) at the provider</div>
+          </div>
+
+          <div className="kpi kpi-actual">
+            <div className="label">Recovered revenue<span className="kpi-tag">Actual</span></div>
+            {/* Sourced solely from attribution records. */}
+            <Counter className="value" value={metrics.recoveredAmountPaise}
+                     testId="recovered-revenue" />
+            <div className="note">ACTUAL · confirmed by payment events</div>
+          </div>
         </div>
 
-        <RevenueFlow
+        {/* -------------------------------------------------------- pipeline */}
+        <div className="section-label">
+          Agent pipeline
+          <span className="badge badge-neutral" data-testid="env-demo" style={{ marginLeft: 8 }}>
+            Demo environment
+          </span>
+        </div>
+        <Pipeline
           phase={phase}
-          captions={{
-            data: "1,200 transactions",
+          values={{
+            data: `${metrics.transactionCount.toLocaleString("en-IN")} txns`,
             opportunity: `${metrics.qualifyingCustomers} customers`,
-            ai: latest?.reasoningMode === "LLM" ? "model reasoning" : "deterministic",
-            guardrail: "10 rules",
+            ai: latest?.reasoningMode === "LLM" ? "LLM ranked" : "Deterministic",
+            guardrail: `${RULE_EVALUATORS.length} rules`,
             razorpay: `${metrics.paymentLinksCreated} link(s)`,
             revenue: formatRupees(metrics.recoveredAmountPaise),
           }}
         />
 
-        {/* ------------------------------------------ historical baseline */}
-        <div className="section-label">Historical merchant baseline · synthetic payment history</div>
-        <div className="kpi-grid">
-          <div className="kpi kpi-historical" style={{ gridColumn: "span 2" }}>
-            <span className="kpi-tag">Potential</span>
-            <div className="label">Recoverable opportunity</div>
-            {/* Never called revenue: money at risk, not money earned. */}
-            <Counter
-              className="value hero"
-              value={metrics.recoverableAmountPaise}
-                            testId="historical-opportunity"
-            />
-            <div className="note">Potential, from merchant history</div>
-          </div>
-          <div className="kpi kpi-historical">
-            <div className="label">Qualifying customers</div>
-            <div className="value">{metrics.qualifyingCustomers}</div>
-            <div className="note">Detected from payment history</div>
-          </div>
-          <div className="kpi kpi-historical">
-            <div className="label">Baseline ends</div>
-            <div className="value" style={{ fontSize: 19 }}>
-              {new Date(simulation.baselineAt).toLocaleDateString("en-IN", {
-                dateStyle: "medium", timeZone: "Asia/Kolkata",
-              })}
-            </div>
-            <div className="note">History stops; the session begins</div>
-          </div>
-        </div>
-
-        {/* ------------------------------------------------ this session */}
-        <div className="section-label">This demo session · Razorpay Test Mode</div>
-        <div className="kpi-grid">
-          <div className="kpi kpi-projected">
-            <span className="kpi-tag">Estimate</span>
-            <div className="label">Expected recovery</div>
-            <Counter className="value" value={metrics.expectedNetPaise} />
-            <div className="note">Estimator projection</div>
-          </div>
-          <div className="kpi kpi-actual">
-            <span className="kpi-tag">Actual</span>
-            <div className="label">Executed actions</div>
-            <div className="value" data-testid="executed-actions">{metrics.executedInterventions}</div>
-            <div className="note">Links created at the provider</div>
-          </div>
-          <div className="kpi kpi-actual">
-            <span className="kpi-tag">Actual</span>
-            <div className="label">Awaiting payment</div>
-            <Counter className="value" value={metrics.paymentLinkValuePaise} />
-            <div className="note">{metrics.paymentLinksCreated} link(s) · not yet collected</div>
-          </div>
-          <div className="kpi kpi-actual">
-            <span className="kpi-tag">Actual</span>
-            <div className="label">Recovered revenue</div>
-            {/* Sourced solely from attribution records. */}
-            <Counter
-              className="value"
-              value={metrics.recoveredAmountPaise}
-                            testId="recovered-revenue"
-            />
-            <div className="note">ACTUAL · confirmed by payment events</div>
-          </div>
-        </div>
-
-        {/* -------------------------------------------------- opportunity */}
-        {metrics.qualifyingCustomers > 0 && (
-          <div className="card" style={{ marginTop: "var(--s-5)" }}>
-            <div className="card-head">
-              <h2>Revenue opportunity detected</h2>
-              <span className="badge badge-blue">Detected from merchant history</span>
-            </div>
-            <OpportunityHero
-              failedTransactions={66}
-              qualifying={metrics.qualifyingCustomers}
-              customers={metrics.qualifyingCustomers}
-              valueLabel={formatRupees(metrics.recoverableAmountPaise)}
-            />
-          </div>
-        )}
-
-        <div className="grid-2">
+        {/* ---------------------------------------------------------- detail */}
+        <div className="grid-2" style={{ marginTop: "var(--s-5)", alignItems: "start" }}>
           <div className="card">
             <div className="card-head">
-              <h2>Agent activity</h2>
+              <h2>Session activity</h2>
               <span className="spacer" />
-              <span className="badge badge-neutral">
-                <span className={`status-dot ${simulation.status === "ACTIVE" ? "active pulse" : "idle"}`} />
-                {simulation.status === "ACTIVE" ? "Active" : "Idle"}
+              <span className="mono">
+                {simulation.status === "ACTIVE" ? "agent active" : "agent idle"}
               </span>
             </div>
-            <p className="card-note">
-              Derived from the append-only audit log. If a line appears here, an audited
-              operation produced it.
-            </p>
             <ActivityTimeline initial={activity} />
           </div>
 
@@ -190,21 +136,31 @@ export default async function CommandCentre() {
             {awaiting.length > 0 && (
               <div className="card">
                 <div className="card-head">
-                  <h2>Awaiting your approval</h2>
+                  <h2>Awaiting approval</h2>
+                  <span className="spacer" />
                   <span className="badge badge-warn">{awaiting.length}</span>
                 </div>
                 {awaiting.map((intervention) => (
-                  <div key={intervention.id} className="strategy chosen" style={{ marginBottom: 10 }}>
-                    <div className="s-name">{intervention.playbookName}</div>
-                    <div className="s-net">{formatRupees(intervention.expectedNetPaise)}</div>
-                    <div className="s-line"><span>Expected net</span><span>{intervention.confidence}</span></div>
-                    <div className="s-line"><span>Customers</span><span>{intervention.targetCount}</span></div>
+                  <div key={intervention.id}>
+                    <div className="label" style={{ margin: 0 }}>{intervention.playbookName}</div>
+                    <div
+                      style={{
+                        fontSize: 30, fontWeight: 600, letterSpacing: "-.035em",
+                        fontVariantNumeric: "tabular-nums", margin: "4px 0 2px",
+                      }}
+                    >
+                      {formatRupees(intervention.expectedNetPaise)}
+                    </div>
+                    <div className="note muted" style={{ fontSize: 11.5 }}>
+                      expected net · {intervention.targetCount} customers ·{" "}
+                      {intervention.confidence.toLowerCase()} confidence
+                    </div>
                     <Link
                       href={`/interventions/${intervention.id}`}
                       className="btn primary"
-                      style={{ marginTop: 14, width: "100%", justifyContent: "center" }}
+                      style={{ marginTop: 16, width: "100%", justifyContent: "center" }}
                     >
-                      Open decision packet
+                      Review decision packet
                     </Link>
                   </div>
                 ))}
@@ -212,10 +168,7 @@ export default async function CommandCentre() {
             )}
 
             <div className="card">
-              <div className="card-head">
-                <h2>Demo controls</h2>
-                <span className="badge badge-neutral"><Activity />Simulation</span>
-              </div>
+              <div className="card-head"><h2>Demo controls</h2></div>
               <DemoControls enabled={getEnv().DEMO_MODE} artifactId={artifactId} />
             </div>
           </div>

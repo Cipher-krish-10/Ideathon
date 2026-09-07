@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { ArrowRight, Filter, Target, XCircle } from "lucide-react";
 
 /**
@@ -29,11 +28,8 @@ export function OpportunityHero({
       {steps.map((step, index) => {
         const Icon = step.icon;
         return (
-          <motion.div
+          <div
             key={step.label}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.11, duration: 0.42 }}
             style={{ display: "flex", alignItems: "center", gap: "var(--s-4)", flexShrink: 0 }}
           >
             <div style={{ minWidth: 132 }}>
@@ -65,7 +61,7 @@ export function OpportunityHero({
             {index < steps.length - 1 && (
               <ArrowRight size={16} color="var(--ink-300)" style={{ margin: "0 var(--s-4)" }} />
             )}
-          </motion.div>
+          </div>
         );
       })}
     </div>
