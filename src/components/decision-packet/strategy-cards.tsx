@@ -5,11 +5,16 @@ import { Sparkles } from "lucide-react";
 import { formatPercent, formatRupees } from "@/lib/format";
 
 /**
- * The three scored strategies.
+ * Strategy comparison.
  *
- * Figures are copied verbatim from persisted Estimate rows. Nothing here
- * computes, derives, or re-ranks — the frontend showing a number the estimator
- * did not produce would defeat the point of scoring deterministically.
+ * A matrix, because the merchant's actual question is "which of these is
+ * better, and by how much" — and that is a table question. Three large cards
+ * force the reader to compare figures across whitespace instead of down a
+ * column, which is slower and reads as a pricing page.
+ *
+ * Every figure is copied verbatim from a persisted Estimate row. Nothing here
+ * computes, derives or re-ranks: the bar widths are the only thing this
+ * component calculates, and they are pure presentation of the same numbers.
  */
 export interface StrategyView {
   estimateId: string; playbookKey: string; playbookName: string;
@@ -18,37 +23,54 @@ export interface StrategyView {
 }
 
 export function StrategyCards({ strategies }: { strategies: StrategyView[] }) {
-  return (
-    <div className="strategy-grid">
-      {strategies.map((strategy) => (
-        <div
-          key={strategy.estimateId}
-          className={`strategy${strategy.isSelected ? " chosen" : ""}`}
-        >
-          {strategy.isSelected && (
-            <span className="badge badge-ai" style={{ marginBottom: 10 }}>
-              <Sparkles />AI selected
-            </span>
-          )}
-          <div className="s-name">{strategy.playbookName}</div>
-          <div className="mono">{strategy.playbookKey}</div>
-          <div
-            className="s-net"
-            style={{ color: strategy.isSelected ? "var(--ai-600)" : "var(--ink-900)" }}
-          >
-            {formatRupees(strategy.expectedNetPaise)}
-          </div>
-          <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>expected net</div>
+  const best = Math.max(...strategies.map((s) => s.expectedNetPaise), 1);
 
-          <div className="s-line"><span>Expected gross</span><span>{formatRupees(strategy.expectedGrossPaise)}</span></div>
-          <div className="s-line"><span>Cost</span><span>{formatRupees(strategy.costPaise)}</span></div>
-          <div className="s-line"><span>Recovery rate</span><span>{formatPercent(strategy.pRecoverAvgBps)}</span></div>
-          <div className="s-line">
-            <span>Confidence</span>
-            <span><span className="badge badge-neutral">{strategy.confidence}</span></span>
-          </div>
-        </div>
-      ))}
+  return (
+    <div className="table-wrap">
+      <table className="matrix">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th className="num">Expected gross</th>
+            <th className="num">Cost</th>
+            <th className="num">Expected net</th>
+            <th className="num">Recovery rate</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {strategies.map((strategy) => (
+            <tr
+              key={strategy.estimateId}
+              className={`strategy${strategy.isSelected ? " chosen" : ""}`}
+            >
+              <td>
+                <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span className="s-name">{strategy.playbookName}</span>
+                    <span className="s-key" style={{ display: "block" }}>{strategy.playbookKey}</span>
+                  </span>
+                  {strategy.isSelected && (
+                    <span className="badge badge-ai"><Sparkles />AI selected</span>
+                  )}
+                </div>
+              </td>
+              <td className="num mono">{formatRupees(strategy.expectedGrossPaise)}</td>
+              <td className="num mono">{formatRupees(strategy.costPaise)}</td>
+              <td className="num">
+                <span className="s-net">{formatRupees(strategy.expectedNetPaise)}</span>
+                {/* Proportional to the best option, so ranking is visible
+                    without arithmetic. Presentation only. */}
+                <span className="net-bar">
+                  <i style={{ width: `${Math.max((strategy.expectedNetPaise / best) * 100, 2)}%` }} />
+                </span>
+              </td>
+              <td className="num mono">{formatPercent(strategy.pRecoverAvgBps)}</td>
+              <td><span className="badge badge-neutral">{strategy.confidence}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

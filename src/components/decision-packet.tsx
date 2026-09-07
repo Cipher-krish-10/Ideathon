@@ -1,26 +1,33 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  AlertTriangle, ArrowRight, Brain, CheckCircle2, CreditCard,
-  ExternalLink, Link2, ShieldCheck, Sparkles, TrendingUp, XCircle,
+  AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CreditCard,
+  ExternalLink, Link2, ShieldCheck, TrendingUp, XCircle,
 } from "lucide-react";
 
 import { GuardrailPanel } from "@/components/decision-packet/guardrail-panel";
 import { StrategyCards } from "@/components/decision-packet/strategy-cards";
 import { Counter } from "@/components/ui/counter";
-import { TopBar } from "@/components/layout/topbar";
-import { decisionPill, formatDateTime, formatRupees } from "@/lib/format";
+import { PageHeader, TopBar } from "@/components/layout/topbar";
+import { decisionPill, formatDateTime, formatPercent, formatRupees } from "@/lib/format";
 
 /**
  * The decision packet.
  *
- * One screen holding everything a merchant needs to decide: what was found,
- * what the agent chose, what it rejected and why, what was checked, and exactly
- * what would be sent. No raw database JSON is shown anywhere.
+ * A financial authorization workspace: everything a merchant needs to approve
+ * a money action, in the order they need it.
+ *
+ *   evidence  →  recommendation  →  comparison  →  controls  →  authorize
+ *
+ * The layout deliberately separates what was OBSERVED from what is MODELLED
+ * from what has HAPPENED. Those three are never adjacent without a label
+ * saying which is which, because conflating them is how a demo overstates
+ * itself. No raw database JSON is shown anywhere.
  */
 
 interface RuleResult {
@@ -98,7 +105,7 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
 
   const decidable = DECIDABLE_STATES.includes(packet.state);
   // Approval is consent, not permission to act: the executor still re-runs the
-  // guardrails. EXECUTION_FAILED is retryable; nothing else is.
+  // guardrails against current state. EXECUTION_FAILED is retryable.
   const executable = ["APPROVED", "EXECUTION_FAILED"].includes(packet.state);
   const hasExecuted = packet.execution.artifacts.length > 0;
   const converted = packet.attribution.records.length > 0;
@@ -197,29 +204,48 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
     }
   }
 
-
   const preApproval = packet.guardrails.filter((g) => g.phase === "PRE_APPROVAL").at(-1);
   const preExecution = packet.guardrails.filter((g) => g.phase === "PRE_EXECUTION").at(-1);
   const selected = packet.recommendation.estimate;
+  const failureReasons = Object.entries(packet.opportunity.failureReasonBreakdown)
+    .sort((a, b) => b[1] - a[1]);
+  const totalFailures = failureReasons.reduce((sum, [, count]) => sum + count, 0);
 
   return (
     <>
       <TopBar
-        title="Decision Packet"
-        subtitle={`${packet.targetCount} customers · ${packet.state.replaceAll("_", " ").toLowerCase()}`}
+        crumbs={[
+          { label: "Nimbus Commerce", href: "/" },
+          { label: "Interventions", href: "/interventions" },
+          { label: "Decision packet" },
+        ]}
         agentStatus="ACTIVE"
         showRunAgent={false}
       />
 
       <div className="content">
+        <Link href="/interventions" className="row-link" style={{ marginBottom: 12 }}>
+          <ArrowLeft size={12} />Back to interventions
+        </Link>
+
+        <PageHeader
+          title="Decision Packet"
+          subtitle={`Failed payment recovery · ${packet.targetCount} customers · ${formatRupees(packet.opportunity.recoverableAmountPaise)} at risk`}
+          actions={
+            <span className={decisionPill(packet.state)}>
+              {packet.state.replaceAll("_", " ")}
+            </span>
+          }
+        />
+
         {/* ------------------------------------------------------- outcome */}
         <AnimatePresence>
           {outcome?.kind === "blocked" && (
             <motion.div
               className="banner banner-block" data-testid="blocked-banner"
-              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
             >
-              <XCircle size={17} />
+              <XCircle size={16} />
               <span>
                 <strong>Action blocked</strong>
                 {outcome.rules.map((rule) => (
@@ -227,28 +253,28 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
                     <span className="mono" data-testid="blocking-rule">{rule.ruleId}</span> — {rule.message}
                   </div>
                 ))}
-                <div style={{ marginTop: 7 }}>Nothing was sent and no money moved.</div>
+                <div style={{ marginTop: 6 }}>Nothing was sent and no money moved.</div>
               </span>
             </motion.div>
           )}
           {outcome?.kind === "approved" && (
             <motion.div
               className="banner banner-ok" data-testid="approved-banner"
-              initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
             >
-              <CheckCircle2 size={17} />
+              <CheckCircle2 size={16} />
               <span>
                 <strong>Approved</strong>
-                Recorded against your account. No money has moved — execution is the next step.
+                Merchant authorization recorded. No money has moved — execution is a separate step.
               </span>
             </motion.div>
           )}
           {outcome?.kind === "executed" && (
             <motion.div
               className="banner banner-ok" data-testid="executed-banner"
-              initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
             >
-              <CreditCard size={17} />
+              <CreditCard size={16} />
               <span>
                 <strong>Executed — {outcome.count} payment link(s) created in Razorpay Test Mode</strong>
                 Payment link created — revenue has <strong style={{ display: "inline" }}>NOT</strong> yet
@@ -258,121 +284,199 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
           )}
           {outcome?.kind === "executionFailed" && (
             <div className="banner banner-block" data-testid="execution-failed-banner">
-              <AlertTriangle size={17} />
+              <AlertTriangle size={16} />
               <span>
                 <strong>RevenuePilot could not safely complete the action</strong>
                 {outcome.message}
-                <div style={{ marginTop: 7 }}>No payment link was created. You can retry.</div>
+                <div style={{ marginTop: 6 }}>No payment link was created. You can retry.</div>
               </span>
             </div>
           )}
           {outcome?.kind === "rejected" && (
             <div className="banner banner-block" data-testid="rejected-banner">
-              <XCircle size={17} /><span><strong>Rejected</strong>This proposal is closed.</span>
+              <XCircle size={16} /><span><strong>Rejected</strong>This proposal is closed.</span>
             </div>
           )}
           {outcome?.kind === "error" && (
             <div className="banner banner-block" data-testid="error-banner">
-              <AlertTriangle size={17} /><span><strong>Could not complete</strong>{outcome.message}</span>
+              <AlertTriangle size={16} /><span><strong>Could not complete</strong>{outcome.message}</span>
             </div>
           )}
         </AnimatePresence>
 
-        {/* --------------------------------------- summary + AI reasoning */}
-        <div className="grid-2" style={{ alignItems: "start" }}>
-          <div className="card">
-            <div className="card-head">
-              <h2>Decision summary</h2>
-              <span className="spacer" />
-              <span className={decisionPill(packet.state)}>{packet.state}</span>
-            </div>
-
-            <div className="kpi-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div className="kpi kpi-historical" style={{ boxShadow: "none" }}>
-                <div className="label">At risk</div>
-                <div className="value" style={{ fontSize: 22 }} data-testid="recoverable-amount">
-                  {formatRupees(packet.opportunity.recoverableAmountPaise)}
-                </div>
-                <div className="note">{packet.opportunity.affectedCustomerCount} customers</div>
+        {/* ============================ evidence  |  recommendation ======== */}
+        <div className="grid" style={{ alignItems: "start" }}>
+          {/* --------------------------------------------------- evidence */}
+          <div className="col-5">
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Opportunity evidence</h2>
+                <span className="spacer" />
+                <span className="mono">{packet.opportunity.detectorVersion}</span>
               </div>
-              <div className="kpi kpi-projected" style={{ boxShadow: "none" }}>
-                <div className="label">Expected net</div>
-                <div className="value" style={{ fontSize: 22 }}>
-                  {formatRupees(selected.expectedNetPaise)}
-                </div>
-                <div className="note">Estimate · {selected.confidence} confidence</div>
-              </div>
-            </div>
 
-            <label>Failure reasons in this cohort</label>
-            <div className="row" style={{ gap: 6 }}>
-              {Object.entries(packet.opportunity.failureReasonBreakdown).map(([reason, count]) => (
-                <span key={reason} className="badge badge-neutral">
-                  {reason.toLowerCase().replaceAll("_", " ")} · {count}
+              <div className="panel-body">
+                <div className="row" style={{ gap: 32, alignItems: "flex-start" }}>
+                  <div>
+                    <div className="m-label">At risk<span className="m-tag">Potential</span></div>
+                    <div className="m-value" style={{ fontSize: 26 }} data-testid="recoverable-amount">
+                      {formatRupees(packet.opportunity.recoverableAmountPaise)}
+                    </div>
+                    <div className="m-note">{packet.opportunity.affectedCustomerCount} customers</div>
+                  </div>
+                  <div>
+                    <div className="m-label">Expected net<span className="m-tag">Est</span></div>
+                    <div className="m-value" style={{ fontSize: 26 }}>
+                      {formatRupees(selected.expectedNetPaise)}
+                    </div>
+                    <div className="m-note">{selected.confidence.toLowerCase()} confidence</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Failure distribution: the actual reason each payment failed,
+                  counted by the detector. This is the evidence the whole
+                  recommendation rests on, so it gets real space. */}
+              <div className="panel-head" style={{ borderTop: "1px solid var(--line)" }}>
+                <h2>Failure distribution</h2>
+                <span className="spacer" />
+                <span className="mono">{totalFailures} attempts</span>
+              </div>
+              <div className="panel-body" style={{ paddingTop: 4 }}>
+                {failureReasons.map(([reason, count]) => (
+                  <div className="funnel-row" key={reason} style={{ padding: "5px 0" }}>
+                    <span
+                      className="funnel-label"
+                      style={{ width: 150, fontSize: 12, fontWeight: 450 }}
+                    >
+                      {reason.toLowerCase().replaceAll("_", " ")}
+                    </span>
+                    <span className="funnel-track" style={{ height: 16 }}>
+                      <span
+                        className="funnel-fill"
+                        style={{
+                          width: `${Math.max((count / totalFailures) * 100, 3)}%`,
+                          background: "var(--ink-200)",
+                        }}
+                      />
+                    </span>
+                    <span className="mono" style={{ width: 26, textAlign: "right" }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="panel-foot">
+                <span className="muted" style={{ fontSize: 11.5 }}>
+                  Counted from the merchant&apos;s payment history by the detector. No model
+                  was involved in producing these figures.
                 </span>
-              ))}
-            </div>
-
-            <label>Recommended action</label>
-            <div className="row" style={{ gap: 8 }}>
-              <strong data-testid="selected-playbook" style={{ fontSize: 15 }}>
-                {packet.recommendation.playbookName}
-              </strong>
-              <span className="mono">{packet.recommendation.playbookKey}</span>
+              </div>
             </div>
           </div>
 
-          <div className="card card-ai">
-            <div className="card-head">
-              <span className="badge badge-ai"><Brain />AI recommendation</span>
-              <span className="spacer" />
-              <span className="badge badge-neutral">{packet.reasoningMode}</span>
-            </div>
-
-            {packet.reasoningMode === "DETERMINISTIC_FALLBACK" && (
-              <div className="banner banner-info" style={{ marginBottom: 14 }}>
-                <AlertTriangle size={15} />
-                <span>
-                  The model did not return a usable answer, so the system selected the highest
-                  expected net deterministically and labelled it rather than stalling.
+          {/* ------------------------------------------------ AI decision */}
+          <div className="col-7">
+            <div className="panel">
+              <div className="panel-head">
+                <h2>Recommendation</h2>
+                <span className="spacer" />
+                <span className={packet.reasoningMode === "LLM" ? "badge badge-ai" : "badge badge-neutral"}>
+                  {packet.reasoningMode}
                 </span>
               </div>
-            )}
 
-            <div className="prose">{packet.recommendation.rationale}</div>
+              <div className="panel-body">
+                {packet.reasoningMode === "DETERMINISTIC_FALLBACK" && (
+                  <div className="banner banner-info">
+                    <AlertTriangle size={15} />
+                    <span>
+                      The model did not return a usable answer, so the system selected the
+                      highest expected net deterministically and labelled it rather than stalling.
+                    </span>
+                  </div>
+                )}
 
-            {packet.recommendation.risksIdentified.length > 0 && (
-              <>
-                <label>Risks identified</label>
-                <ul className="risks">
-                  {packet.recommendation.risksIdentified.map((risk) => <li key={risk}>{risk}</li>)}
-                </ul>
-              </>
-            )}
-            {packet.recommendation.confidenceNote && (
-              <>
-                <label>Confidence note</label>
-                <div className="prose" style={{ fontSize: 13.5 }}>{packet.recommendation.confidenceNote}</div>
-              </>
-            )}
+                {/* The action, stated plainly before any prose. */}
+                <div
+                  className="row"
+                  style={{
+                    gap: 10, paddingBottom: 14, marginBottom: 14,
+                    borderBottom: "1px solid var(--line)", flexWrap: "nowrap",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div className="m-label">Recommended action</div>
+                    <strong
+                      data-testid="selected-playbook"
+                      style={{ fontSize: 16, fontWeight: 600, letterSpacing: "-.018em" }}
+                    >
+                      {packet.recommendation.playbookName}
+                    </strong>
+                    <span className="mono" style={{ display: "block" }}>
+                      {packet.recommendation.playbookKey}
+                    </span>
+                  </div>
+                  <span className="spacer" />
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div className="m-label" style={{ justifyContent: "flex-end" }}>Recovery rate</div>
+                    <div style={{ fontSize: 16, fontWeight: 580 }}>
+                      {formatPercent(selected.pRecoverAvgBps)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="m-label" style={{ marginBottom: 5 }}>Why this action</div>
+                <div className="prose">{packet.recommendation.rationale}</div>
+
+                {packet.recommendation.risksIdentified.length > 0 && (
+                  <>
+                    <label>Risks</label>
+                    <ul className="risks">
+                      {packet.recommendation.risksIdentified.map((risk) => <li key={risk}>{risk}</li>)}
+                    </ul>
+                  </>
+                )}
+                {packet.recommendation.confidenceNote && (
+                  <>
+                    <label>Confidence</label>
+                    <div className="prose" style={{ fontSize: 13 }}>
+                      {packet.recommendation.confidenceNote}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="panel-foot">
+                <span className="muted" style={{ fontSize: 11.5 }}>
+                  {/* Only claim the model did something when it actually did.
+                      Under DETERMINISTIC_FALLBACK no model contributed, and
+                      saying otherwise would misattribute the decision. */}
+                  {packet.reasoningMode === "LLM"
+                    ? "The model ranked pre-scored candidates and wrote this explanation. It did not compute any figure on this page."
+                    : "No model contributed to this proposal. The system selected the highest expected net deterministically."}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* -------------------------------------------------- alternatives */}
-        <div className="card">
-          <div className="card-head">
+        {/* ============================================ strategy comparison */}
+        <div className="panel">
+          <div className="panel-head">
             <h2>Alternatives considered</h2>
             <span className="spacer" />
             <span className="mono">{selected.estimatorVersion}</span>
           </div>
-          <p className="card-note">
-            Every figure comes from the deterministic estimator. The model ranked these; it
-            computed none of them.
-          </p>
           <StrategyCards strategies={packet.alternatives} />
+          <div className="panel-foot">
+            <span className="muted" style={{ fontSize: 11.5 }}>
+              Every figure comes from the deterministic estimator. The model ranked these;
+              it computed none of them.
+            </span>
+          </div>
         </div>
 
-        {/* ---------------------------------------------------- guardrails */}
+        {/* ==================================================== guardrails */}
         {preApproval && (
           <GuardrailPanel
             phase={preApproval.phase} decision={preApproval.decision}
@@ -386,58 +490,97 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
           />
         )}
 
-        {/* ----------------------------------------------------- approval */}
-        <div className="card">
-          <div className="card-head">
-            <h2>{decidable ? "Ready for approval" : "Customer message"}</h2>
+        {/* ===================================================== authorize */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>{decidable ? "Authorize action" : "Customer message"}</h2>
             <span className="spacer" />
             {decidable && <span className="badge badge-warn">Awaiting your decision</span>}
           </div>
-          <p className="card-note">
-            Text only. Financial parameters cannot be edited here — they come from the
-            estimator, and changing them would invalidate the guardrail evaluation.
-          </p>
 
-          <label htmlFor="subject">Subject</label>
-          <input
-            id="subject" type="text" value={subject} data-testid="message-subject"
-            disabled={!decidable} onChange={(event) => setSubject(event.target.value)}
-          />
-          <label htmlFor="body">Body</label>
-          <textarea
-            id="body" rows={8} value={body} data-testid="message-body"
-            disabled={!decidable} onChange={(event) => setBody(event.target.value)}
-          />
-          {edited && (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Edited — your version will be stored with the approval.
-            </p>
+          {decidable && (
+            <>
+              {/* What is actually being authorised, restated compactly right
+                  above the button that authorises it. */}
+              <div className="metric-strip" style={{ border: 0, borderRadius: 0,
+                                                     borderBottom: "1px solid var(--line)" }}>
+                <div className="metric">
+                  <div className="m-label">Strategy</div>
+                  <div className="m-value" style={{ fontSize: 14 }}>
+                    {packet.recommendation.playbookName}
+                  </div>
+                </div>
+                <div className="metric">
+                  <div className="m-label">Maximum exposure</div>
+                  <div className="m-value" style={{ fontSize: 14 }}>
+                    {formatRupees(selected.expectedGrossPaise)}
+                  </div>
+                </div>
+                <div className="metric">
+                  <div className="m-label">Expected net</div>
+                  <div className="m-value" style={{ fontSize: 14 }}>
+                    {formatRupees(selected.expectedNetPaise)}
+                  </div>
+                </div>
+                <div className="metric">
+                  <div className="m-label">Customers</div>
+                  <div className="m-value" style={{ fontSize: 14 }}>{packet.targetCount}</div>
+                </div>
+              </div>
+            </>
           )}
 
-          {decidable ? (
-            <div className="actions">
+          <div className="panel-body">
+            <p className="panel-note">
+              Text only. Financial parameters cannot be edited here — they come from the
+              estimator, and changing them would invalidate the guardrail evaluation.
+            </p>
+
+            <label htmlFor="subject">Subject</label>
+            <input
+              id="subject" type="text" value={subject} data-testid="message-subject"
+              disabled={!decidable} onChange={(event) => setSubject(event.target.value)}
+            />
+            <label htmlFor="body">Body</label>
+            <textarea
+              id="body" rows={7} value={body} data-testid="message-body"
+              disabled={!decidable} onChange={(event) => setBody(event.target.value)}
+            />
+            {edited && (
+              <p className="field-hint">Edited — your version will be stored with the approval.</p>
+            )}
+
+            {!decidable && (
+              <p className="muted" style={{ marginTop: 14, fontSize: 13 }} data-testid="not-decidable">
+                This intervention is {packet.state} and can no longer be decided.
+                {packet.approval && ` ${packet.approval.decision} by ${packet.approval.approver}.`}
+              </p>
+            )}
+          </div>
+
+          {decidable && (
+            <div className="panel-foot">
+              <span className="muted" style={{ fontSize: 11.5 }}>
+                Approving records your authorization. It does not move money.
+              </span>
+              <span className="spacer" />
               <button className="danger" disabled={busy} data-testid="reject-button"
-                onClick={() => decide("reject")}>
-                <XCircle size={15} />Reject
+                      onClick={() => decide("reject")}>
+                <XCircle size={14} />Reject
               </button>
               <button className="approve" disabled={busy} data-testid="approve-button"
-                onClick={() => decide("approve")}>
-                <ShieldCheck size={16} />
-                {busy ? "Checking guardrails…" : "Approve & continue"}
+                      onClick={() => decide("approve")}>
+                <ShieldCheck size={15} />
+                {busy ? "Checking guardrails…" : "Approve action"}
               </button>
             </div>
-          ) : (
-            <p className="muted" style={{ marginTop: 16 }} data-testid="not-decidable">
-              This intervention is {packet.state} and can no longer be decided.
-              {packet.approval && ` ${packet.approval.decision} by ${packet.approval.approver}.`}
-            </p>
           )}
         </div>
 
-        {/* ---------------------------------------------------- execution */}
+        {/* ===================================================== execution */}
         {(executable || hasExecuted) && (
-          <div className="card" data-testid="execution-card">
-            <div className="card-head">
+          <div className="panel" data-testid="execution-card">
+            <div className="panel-head">
               <h2>Payment action</h2>
               <span className="badge badge-warn"><CreditCard />Razorpay Test Mode</span>
               <span className="spacer" />
@@ -448,32 +591,40 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
 
             {!hasExecuted ? (
               <>
-                <p className="card-note">
-                  Approved by {packet.approval?.approver ?? "an approver"}. The executor
-                  re-runs the pre-execution guardrails against current state before creating
-                  anything in Razorpay.
-                </p>
-                <div className="actions">
-                  <button className="primary" onClick={execute} disabled={busy} data-testid="execute-button">
-                    <ArrowRight size={15} />{busy ? "Executing…" : "Execute action"}
+                <div className="panel-body">
+                  <p className="panel-note" style={{ margin: 0 }}>
+                    Approved by {packet.approval?.approver ?? "an approver"}. The executor
+                    re-runs the pre-execution guardrails against current state before creating
+                    anything in Razorpay.
+                  </p>
+                </div>
+                <div className="panel-foot">
+                  <span className="spacer" />
+                  <button className="primary" onClick={execute} disabled={busy}
+                          data-testid="execute-button">
+                    <ArrowRight size={14} />{busy ? "Executing…" : "Execute action"}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <div className="banner banner-ok">
-                  <Link2 size={16} />
-                  <span>
-                    <strong>Payment link created — revenue has NOT yet been recovered.</strong>
-                    Status is <em>awaiting payment</em>. Attribution follows a verified payment event.
-                  </span>
+                <div className="panel-body" style={{ paddingBottom: 0 }}>
+                  <div className="banner banner-ok">
+                    <Link2 size={15} />
+                    <span>
+                      <strong>Payment link created — revenue has NOT yet been recovered.</strong>
+                      Status is <em>awaiting payment</em>. Attribution follows a verified payment event.
+                    </span>
+                  </div>
                 </div>
-                <div className="table-scroll">
+                <div className="table-wrap">
                   <table data-testid="artifact-table">
                     <thead>
                       <tr>
-                        <th>Razorpay Test payment link</th><th className="num">Amount</th>
-                        <th>Status</th><th>Provider id</th>
+                        <th>Razorpay test payment link</th>
+                        <th className="num">Amount</th>
+                        <th>Status</th>
+                        <th>Provider id</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -485,7 +636,7 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
                               {artifact.shortUrl}<ExternalLink size={12} />
                             </a>
                           </td>
-                          <td className="num">{formatRupees(artifact.amountPaise)}</td>
+                          <td className="num money">{formatRupees(artifact.amountPaise)}</td>
                           <td><span className="badge badge-warn">awaiting payment</span></td>
                           <td className="mono">{artifact.providerEntityId}</td>
                         </tr>
@@ -493,34 +644,33 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
                     </tbody>
                   </table>
                 </div>
-                {packet.execution.artifacts.length > 8 && (
-                  <p className="muted" style={{ fontSize: 12 }}>
-                    Showing 8 of {packet.execution.artifacts.length} links ·{" "}
-                    {formatRupees(packet.execution.totalAmountPaise)} awaiting payment.
-                  </p>
-                )}
-                {packet.execution.attempts.length > 0 && (
-                  <>
-                    <label>Execution attempts</label>
-                    <div className="row" style={{ gap: 7 }}>
-                      {packet.execution.attempts.slice(0, 6).map((attempt) => (
+                <div className="panel-foot">
+                  <span className="muted" style={{ fontSize: 11.5 }}>
+                    {packet.execution.artifacts.length > 8
+                      ? `Showing 8 of ${packet.execution.artifacts.length} links · ${formatRupees(packet.execution.totalAmountPaise)} awaiting payment.`
+                      : `${formatRupees(packet.execution.totalAmountPaise)} awaiting payment.`}
+                  </span>
+                  {packet.execution.attempts.length > 0 && (
+                    <>
+                      <span className="spacer" />
+                      {packet.execution.attempts.slice(0, 4).map((attempt) => (
                         <span key={attempt.attemptNo}
-                          className={attempt.status === "SUCCEEDED" ? "badge badge-ok" : "badge badge-stop"}>
-                          #{attempt.attemptNo} {attempt.status} · key {attempt.idempotencyKey}
+                              className={attempt.status === "SUCCEEDED" ? "badge badge-ok" : "badge badge-stop"}>
+                          #{attempt.attemptNo} {attempt.status} · {attempt.idempotencyKey}
                         </span>
                       ))}
-                    </div>
-                  </>
-                )}
+                    </>
+                  )}
+                </div>
               </>
             )}
           </div>
         )}
 
-        {/* -------------------------------------------------- attribution */}
+        {/* =================================================== attribution */}
         {(converted || awaitingPayment) && (
-          <div className="card" data-testid="attribution-card">
-            <div className="card-head">
+          <div className="panel" data-testid="attribution-card">
+            <div className="panel-head">
               <h2>Attribution</h2>
               <span className="spacer" />
               <span className={converted ? "badge badge-ok" : "badge badge-warn"}>
@@ -530,37 +680,32 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
 
             {converted ? (
               <>
-                <motion.div
-                  className="banner banner-ok"
-                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-                >
-                  <CheckCircle2 size={17} />
-                  <span><strong>Payment verified</strong>Attribution resolved from a verified payment event.</span>
-                </motion.div>
-
-                <div className="kpi-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                  <div className="kpi kpi-actual">
-                    <span className="kpi-tag">Actual</span>
-                    <div className="label">Actual recovered revenue</div>
-                    {/* Realised money, not the projection beside it. */}
-                    <Counter
-                      className="value hero"
-                      value={packet.attribution.recoveredAmountPaise}
-                                            testId="recovered-amount"
-                    />
-                    <div className="note">Confirmed by a verified payment event</div>
+                {/*
+                 * The recovery moment. One large figure, clearly labelled as
+                 * the only ACTUAL number in the product, beside the estimate
+                 * it can be compared against. No confetti — this is money
+                 * arriving, and the restraint is the point.
+                 */}
+                <div className="metric-strip" style={{ border: 0, borderRadius: 0,
+                                                       borderBottom: "1px solid var(--line)" }}>
+                  <div className="metric lead is-actual">
+                    <div className="m-label">
+                      Actual recovered revenue<span className="m-tag actual">Actual</span>
+                    </div>
+                    <Counter className="m-value" value={packet.attribution.recoveredAmountPaise}
+                             testId="recovered-amount" />
+                    <div className="m-note">Confirmed by a verified payment event</div>
                   </div>
-                  <div className="kpi kpi-projected">
-                    <span className="kpi-tag">Estimate</span>
-                    <div className="label">Expected net</div>
-                    <div className="value" style={{ color: "var(--ink-400)" }}>
+                  <div className="metric is-estimate">
+                    <div className="m-label">Expected net<span className="m-tag">Est</span></div>
+                    <div className="m-value" style={{ color: "var(--ink-400)" }}>
                       {formatRupees(selected.expectedNetPaise)}
                     </div>
-                    <div className="note">What the estimator projected, unchanged</div>
+                    <div className="m-note">What the estimator projected, unchanged</div>
                   </div>
                 </div>
 
-                <div className="table-scroll" style={{ marginTop: 14 }}>
+                <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
@@ -577,7 +722,7 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
                             </span>
                           </td>
                           <td><span className="badge badge-ok">{record.confidence}</span></td>
-                          <td className="num">{formatRupees(record.attributedAmountPaise)}</td>
+                          <td className="num money">{formatRupees(record.attributedAmountPaise)}</td>
                           <td className="mono">
                             {record.providerEventId ?? "—"}
                             {record.simulated && (
@@ -593,56 +738,62 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
               </>
             ) : (
               <>
-                <p className="card-note">
-                  The payment link exists and is awaiting payment. Nothing is counted as
-                  recovered until a verified payment event arrives and attribution resolves.
-                  If the evidence is ambiguous, RevenuePilot refuses to claim the revenue
-                  rather than guessing.
-                </p>
-                <div className="actions">
-                  <button
-                    onClick={() => simulate(packet.execution.artifacts[0]!.id)}
-                    disabled={busy} data-testid="simulate-payment"
-                  >
-                    <TrendingUp size={15} />
+                <div className="panel-body">
+                  <p className="panel-note" style={{ margin: 0 }}>
+                    The payment link exists and is awaiting payment. Nothing is counted as
+                    recovered until a verified payment event arrives and attribution resolves.
+                    If the evidence is ambiguous, RevenuePilot refuses to claim the revenue
+                    rather than guessing.
+                  </p>
+                </div>
+                <div className="panel-foot">
+                  <span className="muted" style={{ fontSize: 11.5 }}>
+                    The simulation builds a signed provider event and pushes it through the same
+                    webhook receiver a real payment hits.
+                  </span>
+                  <span className="spacer" />
+                  <button onClick={() => simulate(packet.execution.artifacts[0]!.id)}
+                          disabled={busy} data-testid="simulate-payment">
+                    <TrendingUp size={14} />
                     {busy ? "Delivering event…" : "Simulate payment (demo)"}
                   </button>
                 </div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                  The simulation builds a signed provider event and pushes it through the same
-                  webhook pipeline — it cannot mark this converted by itself.
-                </p>
               </>
             )}
           </div>
         )}
 
-        {/* ----------------------------------------------------- timeline */}
-        <div className="card">
-          <div className="card-head"><h2>Activity timeline</h2></div>
+        {/* ====================================================== timeline */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Audit trail</h2>
+            <span className="spacer" />
+            <span className="mono">{packet.auditTimeline.length} events</span>
+          </div>
           <ul className="timeline" data-testid="audit-timeline">
             {packet.auditTimeline.map((entry) => (
               <li key={entry.seq}>
-                <span className="tl-icon"><Sparkles strokeWidth={2} /></span>
+                <span className="tl-time">#{entry.seq}</span>
                 <span className="tl-body">
                   <span className="tl-label">{entry.action.replaceAll("_", " ").toLowerCase()}</span>
-                  <span className="tl-detail">{entry.actorType} · #{entry.seq}</span>
+                  <span className="tl-detail">
+                    {entry.actorType} · {formatDateTime(entry.createdAt)}
+                  </span>
                 </span>
-                <span className="tl-time">{formatDateTime(entry.createdAt)}</span>
               </li>
             ))}
           </ul>
           {packet.reasoning.length > 0 && (
-            <>
-              <label>Model attempts</label>
-              <div className="row" style={{ gap: 7 }}>
-                {packet.reasoning.map((call) => (
-                  <span key={call.id} className={call.isValid ? "badge badge-ok" : "badge badge-stop"}>
-                    #{call.attemptNo} {call.outcome} · {call.provider}/{call.model} · {call.latencyMs}ms
-                  </span>
-                ))}
-              </div>
-            </>
+            <div className="panel-foot">
+              <span className="muted" style={{ fontSize: 11.5 }}>Model attempts</span>
+              <span className="spacer" />
+              {packet.reasoning.map((call) => (
+                <span key={call.id}
+                      className={call.isValid ? "badge badge-ok" : "badge badge-stop"}>
+                  #{call.attemptNo} {call.outcome} · {call.model} · {call.latencyMs}ms
+                </span>
+              ))}
+            </div>
           )}
         </div>
       </div>

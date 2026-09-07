@@ -330,7 +330,7 @@ export async function getDashboardMetrics(merchantId: string) {
   const [
     openOpportunities, pendingApprovals, approved, blocked, rejected,
     opportunityTotals, attributed, auditChain, executedInterventions,
-    artifactTotals, expectedNet, converted, transactionCount,
+    artifactTotals, expectedNet, converted, transactionCount, failedTransactionCount,
   ] = await Promise.all([
     prisma.opportunity.count({ where: { merchantId, status: "OPEN" } }),
     prisma.intervention.count({ where: { merchantId, state: "PENDING_APPROVAL" } }),
@@ -359,6 +359,11 @@ export async function getDashboardMetrics(merchantId: string) {
       where: { merchantId, state: { in: ["CONVERTED", "LEARNED"], }, attributionRecords: { some: {} } },
     }),
     prisma.transaction.count({ where: { merchantId } }),
+    // Failed attempts actually carried by the open opportunities -- the
+    // evidence behind the headline figure, counted rather than asserted.
+    prisma.opportunityTarget.count({
+      where: { opportunity: { merchantId, status: "OPEN" } },
+    }),
   ]);
 
   return {
@@ -386,6 +391,7 @@ export async function getDashboardMetrics(merchantId: string) {
     auditEntryCount: auditChain.entryCount,
     // The observed corpus. Counted, never asserted by the UI.
     transactionCount,
+    failedTransactionCount,
   };
 }
 

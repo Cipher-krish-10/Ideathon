@@ -2,31 +2,38 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Activity, Play } from "lucide-react";
+import { Activity, ChevronRight, Clock, Play } from "lucide-react";
 
 /**
- * Page header with the primary agent action.
+ * Application header.
  *
- * The loading copy names the stage the request is actually in — the agent
- * genuinely runs detector, then estimator, then reasoner, then guardrails — so
- * the labels correspond to real work rather than a decorative delay.
+ * Chrome, not content: a breadcrumb trail, the environment the session is
+ * really in, and the one action that starts work. The page's title lives in
+ * the content area (see PageHeader) so every route shares a left edge and the
+ * header stays the same height everywhere.
+ *
+ * The Run Agent loading copy names the stage the request is genuinely in — the
+ * server really runs detector, then estimator, then reasoner, then guardrails —
+ * so the labels track real work rather than decorating a wait.
  */
 const STAGES = [
-  "Scanning merchant history…",
-  "Evaluating recovery strategies…",
-  "Preparing AI recommendation…",
-  "Checking merchant guardrails…",
+  "Scanning payment history…",
+  "Scoring recovery strategies…",
+  "Ranking with the model…",
+  "Evaluating guardrails…",
 ] as const;
 
+export interface Crumb { label: string; href?: string }
+
 export function TopBar({
-  title, subtitle, agentStatus, showRunAgent = true, simulationTime,
+  crumbs, agentStatus, showRunAgent = true, simulationTime, environment = "Demo",
 }: {
-  title: string;
-  subtitle?: string;
+  crumbs: Crumb[];
   agentStatus: "IDLE" | "ACTIVE";
   showRunAgent?: boolean;
-  /** Demo clock, shown where the page has one. */
+  /** Demo clock, shown where the route has one. */
   simulationTime?: string;
+  environment?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -36,8 +43,6 @@ export function TopBar({
 
   async function run() {
     setBusy(true); setResult(null); setError(null); setStage(0);
-    // Advances while the single request is in flight. Each label names a stage
-    // the server really performs, in the order it performs them.
     const ticker = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 1_100);
     try {
       const response = await fetch("/api/agent/run", { method: "POST" });
@@ -62,27 +67,43 @@ export function TopBar({
 
   return (
     <header className="topbar">
-      <div>
-        <h1>{title}</h1>
-        {subtitle && <div className="sub">{subtitle}</div>}
-        {simulationTime && (
-          <div className="sub">
-            Simulation time ·{" "}
-            <span className="mono" data-testid="simulation-time">{simulationTime}</span>
-          </div>
-        )}
-      </div>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        {crumbs.map((crumb, index) => {
+          const last = index === crumbs.length - 1;
+          return (
+            <span key={`${crumb.label}-${index}`} className="row" style={{ gap: 6 }}>
+              {index > 0 && <ChevronRight size={13} className="crumb-sep" />}
+              {crumb.href && !last ? (
+                <a href={crumb.href} className="crumb">{crumb.label}</a>
+              ) : (
+                <span className={`crumb${last ? " here" : ""}`}>{crumb.label}</span>
+              )}
+            </span>
+          );
+        })}
+      </nav>
 
       <div className="right">
-        <span className="row" style={{ gap: 6, fontSize: 12, color: "var(--ink-400)" }}>
+        {simulationTime && (
+          <span className="env-chip" title="Simulated clock for the demo session">
+            <Clock size={12} strokeWidth={2} />
+            <span className="mono" data-testid="simulation-time">{simulationTime}</span>
+          </span>
+        )}
+
+        <span className="env-chip" data-testid="env-demo">
           <span className={`status-dot ${agentStatus === "ACTIVE" ? "active pulse" : "idle"}`} />
-          Agent {agentStatus === "ACTIVE" ? "active" : "idle"}
+          {environment} environment
         </span>
+
         {showRunAgent && (
-          <button className="primary" onClick={run} disabled={busy} data-testid="run-agent">
-            <Play size={14} strokeWidth={2.6} />
-            {busy ? STAGES[stage] : "Run Agent"}
-          </button>
+          <>
+            <span className="topbar-divider" />
+            <button className="primary" onClick={run} disabled={busy} data-testid="run-agent">
+              <Play size={13} strokeWidth={2.6} />
+              {busy ? STAGES[stage] : "Run agent"}
+            </button>
+          </>
         )}
       </div>
 
@@ -90,16 +111,39 @@ export function TopBar({
         <div
           role="status"
           style={{
-            position: "absolute", top: "100%", right: "var(--s-6)", marginTop: 8,
-            maxWidth: 460, zIndex: 30,
+            position: "absolute", top: "100%", right: "var(--gutter)", marginTop: 8,
+            maxWidth: 440, zIndex: 40,
           }}
         >
-          <div className={`banner ${error ? "banner-block" : "banner-info"}`} style={{ margin: 0 }}>
+          <div
+            className={`banner ${error ? "banner-block" : "banner-info"}`}
+            style={{ margin: 0, boxShadow: "var(--sh-2)" }}
+          >
             <Activity size={15} />
             <span data-testid={error ? undefined : "run-agent-result"}>{error ?? result}</span>
           </div>
         </div>
       )}
     </header>
+  );
+}
+
+/**
+ * The page's own header, on the content's left edge.
+ *
+ * Separating this from the top bar is what keeps the chrome a fixed height
+ * while page titles stay full-size and consistently aligned across routes.
+ */
+export function PageHeader({
+  title, subtitle, actions,
+}: { title: string; subtitle?: string; actions?: React.ReactNode }) {
+  return (
+    <div className="page-head">
+      <div className="titles">
+        <h1 className="page-title">{title}</h1>
+        {subtitle && <div className="page-sub">{subtitle}</div>}
+      </div>
+      {actions && <div className="actions">{actions}</div>}
+    </div>
   );
 }

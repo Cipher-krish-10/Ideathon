@@ -8,11 +8,12 @@ import {
 } from "lucide-react";
 
 /**
- * Session activity timeline.
+ * Agent activity.
  *
- * Every entry is derived from the append-only audit log by the server. This
- * component only chooses an icon and animates the row in — it never adds,
- * reorders, or embellishes an event.
+ * Reads as an infrastructure log, not a decorative feed: a fixed timestamp
+ * gutter, one line per event, detail in mono. Every entry is derived by the
+ * server from the append-only audit log — this component chooses an icon and
+ * nothing else. It never adds, reorders, merges or embellishes an event.
  */
 export interface ActivityEntry {
   seq: number; at: string; phase: string; label: string;
@@ -35,7 +36,7 @@ const time = (iso: string) =>
 export function ActivityTimeline({ initial }: { initial: ActivityEntry[] }) {
   const [entries, setEntries] = useState(initial);
 
-  // Polled, not streamed: this is a four-minute demo, and a socket would be
+  // Polled, not streamed. This is a four-minute demo; a socket would be
   // infrastructure that earns nothing here.
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -54,8 +55,8 @@ export function ActivityTimeline({ initial }: { initial: ActivityEntry[] }) {
   if (entries.length === 0) {
     return (
       <div className="empty" data-testid="feed-empty">
-        <div className="big">No agent activity in this session yet</div>
-        Run the agent to analyse the merchant&apos;s payment history.
+        <div className="big">No agent activity in this session</div>
+        Run the agent to analyse this merchant&apos;s payment history.
       </div>
     );
   }
@@ -63,8 +64,10 @@ export function ActivityTimeline({ initial }: { initial: ActivityEntry[] }) {
   return (
     <div className="feed-scroll">
       <ul className="timeline" data-testid="activity-feed">
+        {/* initial={false} so a reload paints the log instantly. Only genuinely
+            NEW events animate in — the motion means "this just happened". */}
         <AnimatePresence initial={false}>
-          {entries.map((entry, index) => {
+          {entries.map((entry) => {
             const Icon = ICONS[entry.phase] ?? Radar;
             const toneClass =
               entry.tone === "good" ? "good"
@@ -73,10 +76,11 @@ export function ActivityTimeline({ initial }: { initial: ActivityEntry[] }) {
             return (
               <motion.li
                 key={entry.seq}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.32, delay: Math.min(index, 8) * 0.025 }}
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22 }}
               >
+                <span className="tl-time">{time(entry.at)}</span>
                 <span className={`tl-icon ${toneClass}`}><Icon strokeWidth={2.1} /></span>
                 <span className="tl-body">
                   <span className="tl-label">
@@ -87,7 +91,6 @@ export function ActivityTimeline({ initial }: { initial: ActivityEntry[] }) {
                   </span>
                   {entry.detail && <span className="tl-detail">{entry.detail}</span>}
                 </span>
-                <span className="tl-time">{time(entry.at)}</span>
               </motion.li>
             );
           })}

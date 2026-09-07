@@ -78,6 +78,10 @@ export function PolicyEditor({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Save is only offered when something genuinely changed — an always-live
+  // primary action trains people to ignore it.
+  const dirty = JSON.stringify(draft) !== JSON.stringify(rules);
+
   function setLimit(ruleId: string, value: number) {
     setDraft((current) => ({ ...current, [ruleId]: { ...current[ruleId], limit: value } }));
   }
@@ -107,28 +111,36 @@ export function PolicyEditor({
   }
 
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className="panel">
+      <div className="panel-head">
         <h2>Merchant safety controls</h2>
         <span className="badge badge-blue">v{activeVersion} active</span>
+        <span className="spacer" />
+        {dirty && <span className="badge badge-warn">Unsaved changes</span>}
       </div>
-      <p className="card-note">
-        Saving creates a new version — a policy is never mutated in place, so an evaluation
-        that recorded &ldquo;policy v1&rdquo; keeps meaning what it meant.
-      </p>
 
-      {message && <div className="banner banner-ok" data-testid="policy-saved"><ShieldCheck size={16} /><span>{message}</span></div>}
-      {error && <div className="banner banner-block">{error}</div>}
+      <div className="panel-body">
+        <p className="panel-note">
+          Saving creates a new version — a policy is never mutated in place, so an evaluation
+          that recorded &ldquo;policy v1&rdquo; keeps meaning what it meant.
+        </p>
+
+        {message && (
+          <div className="banner banner-ok" data-testid="policy-saved">
+            <ShieldCheck size={15} /><span>{message}</span>
+          </div>
+        )}
+        {error && <div className="banner banner-block"><span>{error}</span></div>}
 
       {GROUPS.map((group) => {
         const Icon = group.icon;
         return (
-          <div key={group.title} style={{ marginBottom: "var(--s-5)" }}>
-            <div className="row" style={{ gap: 9, marginBottom: 4 }}>
-              <Icon size={15} color="var(--blue-600)" strokeWidth={2.2} />
-              <strong style={{ fontSize: 13.5 }}>{group.title}</strong>
+          <div key={group.title} style={{ marginBottom: "var(--s-6)" }}>
+            <div className="row" style={{ gap: 7, marginBottom: 2 }}>
+              <Icon size={13} color="var(--ink-400)" strokeWidth={2} />
+              <strong style={{ fontSize: 12.5, color: "var(--ink-900)" }}>{group.title}</strong>
             </div>
-            <p className="muted" style={{ fontSize: 12.5, margin: "0 0 10px 24px" }}>{group.note}</p>
+            <p className="muted" style={{ fontSize: 12, margin: "0 0 10px 20px" }}>{group.note}</p>
 
             {group.rules.map((ruleId) => {
               const config = draft[ruleId];
@@ -136,16 +148,25 @@ export function PolicyEditor({
               const limit = config.limit;
               const editable = typeof limit === "number";
               return (
-                <div className="rule" key={ruleId}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 13px" }}>
-                    <span className={config.severity === "BLOCK" ? "rule-ico stop" : "rule-ico warn"}>
+                <div className="policy-row" key={ruleId}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0" }}>
+                    <span className={config.severity === "BLOCK" ? "control-ico stop" : "control-ico warn"}
+                          aria-hidden="true">
                       <ShieldCheck strokeWidth={3} />
                     </span>
-                    <span style={{ flex: 1 }}>
-                      <span className="rule-name">{RULE_LABELS[ruleId] ?? ruleId}</span>
-                      <div className="mono">{ruleId}</div>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span className="control-name">{RULE_LABELS[ruleId] ?? ruleId}</span>
+                      <div className="mono" style={{ fontSize: 10.5 }}>{ruleId}</div>
                     </span>
-                    <span className={config.severity === "BLOCK" ? "badge badge-stop" : "badge badge-warn"}>
+                    <span
+                      className="mono"
+                      style={{ fontSize: 10.5, letterSpacing: ".05em" }}
+                      title={
+                        config.severity === "BLOCK"
+                          ? "Breaching this rule blocks the action outright"
+                          : "Breaching this rule requires a human decision"
+                      }
+                    >
                       {String(config.severity)}
                     </span>
                     {editable ? (
@@ -178,8 +199,16 @@ export function PolicyEditor({
         );
       })}
 
-      <div className="actions">
-        <button className="accent" onClick={save} disabled={busy} data-testid="save-policy">
+      </div>
+
+      <div className="panel-foot">
+        <span className="muted" style={{ fontSize: 11.5 }}>
+          Lower the daily discount budget below a pending action&apos;s discount cost to see
+          the pre-execution guardrail refuse it.
+        </span>
+        <span className="spacer" />
+        <button className="primary" onClick={save} disabled={busy || !dirty}
+                data-testid="save-policy">
           {busy ? "Saving…" : "Save as new version"}
         </button>
       </div>

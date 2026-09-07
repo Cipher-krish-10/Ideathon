@@ -1,6 +1,6 @@
-import { CheckCircle2, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 
-import { TopBar } from "@/components/layout/topbar";
+import { PageHeader, TopBar } from "@/components/layout/topbar";
 import { formatDateTime } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { listAuditEntries } from "@/server/services/read.service";
@@ -8,6 +8,13 @@ import { getSimulationState } from "@/server/services/simulation";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Audit console.
+ *
+ * A compliance surface. The integrity claim is stated once, at the top, and it
+ * is verifiable rather than asserted: the chain is recomputed from scratch on
+ * every request, so "verified" means the server just proved it.
+ */
 export default async function AuditPage() {
   const session = await requireSession();
   const [audit, simulation] = await Promise.all([
@@ -18,87 +25,85 @@ export default async function AuditPage() {
   return (
     <>
       <TopBar
-        title="Audit"
-        subtitle="Append-only and hash-chained — each entry commits to its predecessor"
+        crumbs={[{ label: "Nimbus Commerce", href: "/" }, { label: "Audit" }]}
         agentStatus={simulation.status}
         showRunAgent={false}
       />
       <div className="content">
-        {/* The trust claim, made verifiable rather than asserted. */}
-        <div
-          className="card"
-          style={{
-            background: audit.verified
-              ? "linear-gradient(135deg, var(--ok-50), #ffffff 62%)"
-              : "linear-gradient(135deg, var(--stop-50), #ffffff 62%)",
-            borderColor: audit.verified ? "#bce8cd" : "#f3c4c1",
-          }}
-        >
-          <div className="row" style={{ gap: 16 }}>
-            <div
-              style={{
-                width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center",
-                background: audit.verified ? "var(--ok-500)" : "var(--stop-500)", color: "#fff",
-              }}
-            >
-              {audit.verified ? <ShieldCheck size={22} /> : <ShieldAlert size={22} />}
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: 11, letterSpacing: ".11em", textTransform: "uppercase",
-                  fontWeight: 700, color: "var(--ink-400)",
-                }}
-              >
-                Audit chain
-              </div>
-              {/* One element, one phrase: the trust claim reads as a sentence. */}
-              <div style={{ fontSize: 24, fontWeight: 660, letterSpacing: "-.028em", marginTop: 2 }}>
+        <PageHeader
+          title="Audit"
+          subtitle="Append-only and hash-chained. Each entry commits to its predecessor, so editing history invalidates every entry after it."
+        />
+
+        {/* The trust claim, made verifiable rather than decorative. */}
+        <div className="panel">
+          <div className={`control-status ${audit.verified ? "ok" : "bad"}`}>
+            <span className="ico">
+              {audit.verified ? <ShieldCheck size={15} /> : <ShieldAlert size={15} />}
+            </span>
+            <span>
+              <span className="verdict">
                 {audit.verified ? "Integrity verified" : "Chain broken"}
-              </div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                {audit.entryCount} events recomputed from scratch. Editing history
-                invalidates every entry after it.
-              </div>
-            </div>
+              </span>
+              <span className="detail">
+                {audit.entryCount} events recomputed from scratch on this request.
+              </span>
+            </span>
+            <span className="spacer" />
+            <span className="badge badge-neutral">sha256 chain</span>
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-head"><h2>System timeline</h2></div>
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Event stream</h2>
+            <span className="badge badge-neutral">{audit.entries.length}</span>
+            <span className="spacer" />
+            <span className="mono">newest first</span>
+          </div>
+
           {audit.entries.length === 0 ? (
             <div className="empty">
               <div className="big">No audited events yet</div>
               Run the agent to begin the session record.
             </div>
           ) : (
-            <div className="table-scroll">
+            <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th className="num">#</th><th>Actor</th><th>Action</th>
-                    <th>Entity</th><th>When</th><th>Hash</th>
+                    <th className="num">Seq</th>
+                    <th>Timestamp</th>
+                    <th>Actor</th>
+                    <th>Event</th>
+                    <th>Entity</th>
+                    <th>Hash</th>
                   </tr>
                 </thead>
                 <tbody>
                   {audit.entries.map((entry) => (
                     <tr key={entry.seq}>
                       <td className="num mono">{entry.seq}</td>
-                      <td><span className="badge badge-neutral">{entry.actorType}</span></td>
-                      <td>{entry.action.replaceAll("_", " ").toLowerCase()}</td>
-                      <td className="muted">{entry.entityType}</td>
                       <td className="mono">{formatDateTime(entry.createdAt)}</td>
-                      <td className="mono">
-                        <span className="row" style={{ gap: 5 }}>
-                          <CheckCircle2 size={12} color="var(--ok-500)" />{entry.hash}…
-                        </span>
+                      <td><span className="badge badge-neutral">{entry.actorType}</span></td>
+                      <td style={{ color: "var(--ink-900)" }}>
+                        {entry.action.replaceAll("_", " ").toLowerCase()}
                       </td>
+                      <td className="muted">{entry.entityType}</td>
+                      <td className="mono">{entry.hash}…</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+
+          <div className="panel-foot">
+            <span className="muted" style={{ fontSize: 11.5 }}>
+              Entries are written by the application, never by hand. The database rejects
+              every UPDATE and every DELETE that is not an explicit purge.
+            </span>
+          </div>
         </div>
       </div>
     </>

@@ -30,7 +30,7 @@ function resetDemo(blocking = false) {
 
 async function openPendingPacket(page: import("@playwright/test").Page) {
   await page.goto("/interventions");
-  const link = page.getByRole("link", { name: "Open →" }).first();
+  const link = page.getByRole("link", { name: "Open" }).first();
   await expect(link).toBeVisible();
   await link.click();
   await expect(page.getByRole("heading", { name: "Decision Packet" })).toBeVisible();
@@ -258,7 +258,7 @@ test.describe("RevenuePilot demo flow", () => {
 
     // Approve and execute.
     await page.goto("/interventions");
-    await page.getByRole("link", { name: "Open →" }).first().click();
+    await page.getByRole("link", { name: "Open" }).first().click();
     await page.getByTestId("approve-button").click();
     await expect(page.getByTestId("approved-banner")).toBeVisible({ timeout: 20_000 });
     await page.reload();
