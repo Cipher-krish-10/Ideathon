@@ -1,29 +1,35 @@
 import { notFound } from "next/navigation";
 
+import { TopBar } from "@/components/layout/topbar";
 import { formatPercent, formatRupees } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { getOpportunityDetail } from "@/server/services/read.service";
+import { getSimulationState } from "@/server/services/simulation";
 
 export const dynamic = "force-dynamic";
 
 export default async function OpportunityPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
-  const opportunity = await getOpportunityDetail(session.merchantId, id);
+  const [opportunity, simulation] = await Promise.all([
+    getOpportunityDetail(session.merchantId, id),
+    getSimulationState(session.merchantId),
+  ]);
   if (!opportunity) notFound();
 
   return (
-    <main className="page">
-      <h1>Opportunity evidence</h1>
-      <p className="subtitle">
-        {opportunity.affectedCustomerCount} customers ·{" "}
-        {formatRupees(opportunity.recoverableAmountPaise)} ·{" "}
-        <span className="mono">{opportunity.detectorVersion}</span>
-      </p>
+    <>
+      <TopBar
+        title="Opportunity evidence"
+        subtitle={`${opportunity.affectedCustomerCount} customers · ${formatRupees(opportunity.recoverableAmountPaise)} · ${opportunity.detectorVersion}`}
+        agentStatus={simulation.status}
+        showRunAgent={false}
+      />
+      <div className="content">
 
       <div className="grid grid-2">
         <div className="card">
-          <h2>Why these qualified</h2>
+          <div className="card-head"><h2>Why these qualified</h2></div>
           <table>
             <thead><tr><th>Failure reason</th><th className="num">Count</th></tr></thead>
             <tbody>
@@ -35,7 +41,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         </div>
 
         <div className="card">
-          <h2>Why the rest did not</h2>
+          <div className="card-head"><h2>Why the rest did not</h2></div>
           <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
             The agent discriminated rather than counting failed payments.
           </p>
@@ -55,7 +61,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="card">
-        <h2>Deterministic strategies</h2>
+        <div className="card-head"><h2>Deterministic strategies</h2></div>
         <div className="table-scroll">
           <table>
             <thead>
@@ -72,7 +78,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                   <td className="num">{formatRupees(estimate.expectedGrossPaise)}</td>
                   <td className="num">{formatRupees(estimate.costPaise)}</td>
                   <td className="num"><strong>{formatRupees(estimate.expectedNetPaise)}</strong></td>
-                  <td><span className="pill pill-muted">{estimate.confidence}</span></td>
+                  <td><span className="badge badge-neutral">{estimate.confidence}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -81,7 +87,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="card">
-        <h2>Targets ({opportunity.targets.length})</h2>
+        <div className="card-head"><h2>Targets ({opportunity.targets.length})</h2></div>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
           Dataset references and tier only. No contact details are shown, because nothing
           on this page needs one.
@@ -98,7 +104,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
               {opportunity.targets.map((target) => (
                 <tr key={target.transactionRef}>
                   <td className="mono">{target.customerRef}</td>
-                  <td><span className="pill pill-muted">{target.customerTier}</span></td>
+                  <td><span className="badge badge-neutral">{target.customerTier}</span></td>
                   <td className="mono">{target.transactionRef}</td>
                   <td className="num">{formatRupees(target.amountPaise)}</td>
                   <td>{String(target.failureReason ?? "").toLowerCase().replaceAll("_", " ")}</td>
@@ -112,12 +118,12 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
 
       {opportunity.interventions.length > 0 && (
         <div className="card">
-          <h2>Proposals</h2>
+          <div className="card-head"><h2>Proposals</h2></div>
           <table>
             <tbody>
               {opportunity.interventions.map((intervention) => (
                 <tr key={intervention.id}>
-                  <td><span className="pill pill-muted">{intervention.state}</span></td>
+                  <td><span className="badge badge-neutral">{intervention.state}</span></td>
                   <td className="mono">{intervention.reasoningMode}</td>
                   <td><a href={`/interventions/${intervention.id}`}>Open decision packet →</a></td>
                 </tr>
@@ -126,6 +132,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
           </table>
         </div>
       )}
-    </main>
+      </div>
+    </>
   );
 }

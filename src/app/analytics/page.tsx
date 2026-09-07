@@ -1,6 +1,9 @@
+import { FunnelChart } from "@/components/analytics/funnel-chart";
+import { TopBar } from "@/components/layout/topbar";
 import { formatPercent, formatRupees } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { getAnalytics } from "@/server/services/read.service";
+import { getSimulationState } from "@/server/services/simulation";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +16,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function AnalyticsPage() {
   const session = await requireSession();
-  const analytics = await getAnalytics(session.merchantId);
+  const [analytics, simulation] = await Promise.all([
+    getAnalytics(session.merchantId),
+    getSimulationState(session.merchantId),
+  ]);
 
   const funnelRows = [
     ["Detected", analytics.funnel.detected, "opportunities found in the data"],
@@ -24,8 +30,14 @@ export default async function AnalyticsPage() {
   ] as const;
 
   return (
-    <main className="page">
-      <h1>Analytics</h1>
+    <>
+      <TopBar
+        title="Analytics"
+        subtitle="Estimates and actuals, deliberately never added together"
+        agentStatus={simulation.status}
+        showRunAgent={false}
+      />
+      <div className="content">
       <p className="subtitle">
         Four different things, deliberately never added together. Only{" "}
         <strong>recovered revenue</strong> is money that has genuinely arrived.
@@ -77,33 +89,16 @@ export default async function AnalyticsPage() {
 
       <div className="grid grid-2">
         <div className="card">
-          <h2>Funnel</h2>
-          <table>
-            <thead><tr><th>Stage</th><th className="num">Count</th><th>Meaning</th></tr></thead>
-            <tbody>
-              {funnelRows.map(([label, count, meaning]) => (
-                <tr key={label}>
-                  <td>{label}</td>
-                  <td className="num"><strong>{count}</strong></td>
-                  <td className="muted" style={{ fontSize: 13 }}>{meaning}</td>
-                </tr>
-              ))}
-              <tr>
-                <td className="muted">Blocked by guardrails</td>
-                <td className="num">{analytics.funnel.blocked}</td>
-                <td className="muted" style={{ fontSize: 13 }}>stopped before acting</td>
-              </tr>
-              <tr>
-                <td className="muted">Rejected</td>
-                <td className="num">{analytics.funnel.rejected}</td>
-                <td className="muted" style={{ fontSize: 13 }}>a human declined</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="card-head"><h2>Recovery funnel</h2></div>
+          <FunnelChart
+            stages={funnelRows.map(([label, count, meaning]) => ({ label, count, meaning }))}
+            blocked={analytics.funnel.blocked}
+            rejected={analytics.funnel.rejected}
+          />
         </div>
 
         <div className="card">
-          <h2>Attributed payments</h2>
+          <div className="card-head"><h2>Attributed payments</h2></div>
           <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
             A payment is counted only when attribution resolves confidently. Ambiguous
             evidence produces no credit at all.
@@ -119,7 +114,7 @@ export default async function AnalyticsPage() {
       </div>
 
       <div className="card">
-        <h2>Playbook learning</h2>
+        <div className="card-head"><h2>Playbook learning</h2></div>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
           Seeded priors versus what has actually been observed. The next estimator run reads
           the current rate, so an outcome here changes what the agent proposes next.
@@ -159,6 +154,7 @@ export default async function AnalyticsPage() {
           </table>
         </div>
       </div>
-    </main>
+      </div>
+    </>
   );
 }

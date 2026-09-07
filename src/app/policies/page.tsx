@@ -1,28 +1,35 @@
 import { PolicyEditor } from "@/components/policy-editor";
+import { TopBar } from "@/components/layout/topbar";
 import { formatDateTime } from "@/lib/format";
 import { requireSession } from "@/server/auth/session";
 import { getPolicySnapshot } from "@/server/services/policy.service";
+import { getSimulationState } from "@/server/services/simulation";
 
 export const dynamic = "force-dynamic";
 
 export default async function PoliciesPage() {
   const session = await requireSession();
-  const snapshot = await getPolicySnapshot(session.merchantId);
+  const [snapshot, simulation] = await Promise.all([
+    getPolicySnapshot(session.merchantId),
+    getSimulationState(session.merchantId),
+  ]);
 
   return (
-    <main className="page">
-      <h1>Policies</h1>
-      <p className="subtitle">
-        The deterministic limits that gate every money action. The reasoning model can
-        cite these; it cannot change them.
-      </p>
+    <>
+      <TopBar
+        title="Policies"
+        subtitle="The deterministic limits that gate every money action"
+        agentStatus={simulation.status}
+        showRunAgent={false}
+      />
+      <div className="content">
 
       {snapshot && (
         <PolicyEditor activeVersion={snapshot.activeVersion} rules={snapshot.rules} />
       )}
 
       <div className="card">
-        <h2>Version history</h2>
+        <div className="card-head"><h2>Version history</h2></div>
         <table>
           <thead><tr><th>Version</th><th>Status</th><th>Created</th></tr></thead>
           <tbody>
@@ -30,7 +37,7 @@ export default async function PoliciesPage() {
               <tr key={version.version}>
                 <td className="mono">v{version.version}</td>
                 <td>
-                  <span className={version.isActive ? "pill pill-pass" : "pill pill-muted"}>
+                  <span className={version.isActive ? "badge badge-ok" : "badge badge-neutral"}>
                     {version.isActive ? "active" : "superseded"}
                   </span>
                 </td>
@@ -40,6 +47,7 @@ export default async function PoliciesPage() {
           </tbody>
         </table>
       </div>
-    </main>
+      </div>
+    </>
   );
 }

@@ -3,7 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { decisionPill, formatDateTime, formatPercent, formatRupees } from "@/lib/format";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  AlertTriangle, ArrowRight, Brain, CheckCircle2, CreditCard,
+  ExternalLink, Link2, ShieldCheck, Sparkles, TrendingUp, XCircle,
+} from "lucide-react";
+
+import { GuardrailPanel } from "@/components/decision-packet/guardrail-panel";
+import { StrategyCards } from "@/components/decision-packet/strategy-cards";
+import { Counter } from "@/components/ui/counter";
+import { TopBar } from "@/components/layout/topbar";
+import { decisionPill, formatDateTime, formatRupees } from "@/lib/format";
 
 /**
  * The decision packet.
@@ -25,7 +35,8 @@ interface EstimateView {
   estimateId: string; playbookKey: string; playbookName: string;
   expectedGrossPaise: number; costPaise: number; discountCostPaise: number;
   channelCostPaise: number; gatewayFeePaise: number; expectedNetPaise: number;
-  pRecoverAvgBps: number; confidence: string; discountBps: number; isSelected?: boolean;
+  pRecoverAvgBps: number; confidence: string; discountBps: number;
+  estimatorVersion: string; isSelected?: boolean;
 }
 
 export interface DecisionPacketData {
@@ -186,436 +197,455 @@ export function DecisionPacket({ packet }: { packet: DecisionPacketData }) {
     }
   }
 
+
   const preApproval = packet.guardrails.filter((g) => g.phase === "PRE_APPROVAL").at(-1);
   const preExecution = packet.guardrails.filter((g) => g.phase === "PRE_EXECUTION").at(-1);
+  const selected = packet.recommendation.estimate;
 
   return (
-    <main className="page">
-      <h1>Decision Packet</h1>
-      <p className="subtitle">
-        <span className={decisionPill(packet.state)}>{packet.state}</span>{" "}
-        <span className="mono">
-          {packet.targetCount} customers · reasoning {packet.reasoningMode} · v{packet.version}
-        </span>
-      </p>
+    <>
+      <TopBar
+        title="Decision Packet"
+        subtitle={`${packet.targetCount} customers · ${packet.state.replaceAll("_", " ").toLowerCase()}`}
+        agentStatus="ACTIVE"
+        showRunAgent={false}
+      />
 
-      {outcome?.kind === "blocked" && (
-        <div className="banner banner-block" data-testid="blocked-banner">
-          <strong>Action blocked</strong>
-          {outcome.rules.map((rule) => (
-            <div key={rule.ruleId}>
-              <span className="mono" data-testid="blocking-rule">{rule.ruleId}</span> — {rule.message}
+      <div className="content">
+        {/* ------------------------------------------------------- outcome */}
+        <AnimatePresence>
+          {outcome?.kind === "blocked" && (
+            <motion.div
+              className="banner banner-block" data-testid="blocked-banner"
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            >
+              <XCircle size={17} />
+              <span>
+                <strong>Action blocked</strong>
+                {outcome.rules.map((rule) => (
+                  <div key={rule.ruleId}>
+                    <span className="mono" data-testid="blocking-rule">{rule.ruleId}</span> — {rule.message}
+                  </div>
+                ))}
+                <div style={{ marginTop: 7 }}>Nothing was sent and no money moved.</div>
+              </span>
+            </motion.div>
+          )}
+          {outcome?.kind === "approved" && (
+            <motion.div
+              className="banner banner-ok" data-testid="approved-banner"
+              initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }}
+            >
+              <CheckCircle2 size={17} />
+              <span>
+                <strong>Approved</strong>
+                Recorded against your account. No money has moved — execution is the next step.
+              </span>
+            </motion.div>
+          )}
+          {outcome?.kind === "executed" && (
+            <motion.div
+              className="banner banner-ok" data-testid="executed-banner"
+              initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }}
+            >
+              <CreditCard size={17} />
+              <span>
+                <strong>Executed — {outcome.count} payment link(s) created in Razorpay Test Mode</strong>
+                Payment link created — revenue has <strong style={{ display: "inline" }}>NOT</strong> yet
+                been recovered. The links are awaiting payment.
+              </span>
+            </motion.div>
+          )}
+          {outcome?.kind === "executionFailed" && (
+            <div className="banner banner-block" data-testid="execution-failed-banner">
+              <AlertTriangle size={17} />
+              <span>
+                <strong>RevenuePilot could not safely complete the action</strong>
+                {outcome.message}
+                <div style={{ marginTop: 7 }}>No payment link was created. You can retry.</div>
+              </span>
             </div>
-          ))}
-          <div style={{ marginTop: 8 }}>Nothing was sent and no money moved.</div>
-        </div>
-      )}
-      {outcome?.kind === "approved" && (
-        <div className="banner banner-ok" data-testid="approved-banner">
-          <strong>Approved</strong>
-          Recorded against your account. No money has moved — execution is a later phase.
-        </div>
-      )}
-      {outcome?.kind === "executed" && (
-        <div className="banner banner-ok" data-testid="executed-banner">
-          <strong>Executed — {outcome.count} payment link(s) created in Razorpay Test Mode</strong>
-          Payment link created — revenue has <strong>NOT</strong> yet been recovered.
-          The links are awaiting payment.
-        </div>
-      )}
-      {outcome?.kind === "executionFailed" && (
-        <div className="banner banner-block" data-testid="execution-failed-banner">
-          <strong>Execution failed</strong>{outcome.message}
-          <div style={{ marginTop: 8 }}>No payment link was created. You can retry.</div>
-        </div>
-      )}
-      {outcome?.kind === "rejected" && (
-        <div className="banner banner-block" data-testid="rejected-banner">
-          <strong>Rejected</strong>This proposal is closed.
-        </div>
-      )}
-      {outcome?.kind === "error" && (
-        <div className="banner banner-block" data-testid="error-banner">
-          <strong>Could not complete</strong>{outcome.message}
-        </div>
-      )}
-
-      {/* 1. Opportunity */}
-      <div className="card">
-        <h2>Opportunity</h2>
-        <div className="row" style={{ gap: 32, marginBottom: 14 }}>
-          <div>
-            <div className="label">Customers</div>
-            <div style={{ fontSize: 22, fontWeight: 650 }}>
-              {packet.opportunity.affectedCustomerCount}
+          )}
+          {outcome?.kind === "rejected" && (
+            <div className="banner banner-block" data-testid="rejected-banner">
+              <XCircle size={17} /><span><strong>Rejected</strong>This proposal is closed.</span>
             </div>
-          </div>
-          <div>
-            <div className="label">Recoverable</div>
-            <div style={{ fontSize: 22, fontWeight: 650 }} data-testid="recoverable-amount">
-              {formatRupees(packet.opportunity.recoverableAmountPaise)}
+          )}
+          {outcome?.kind === "error" && (
+            <div className="banner banner-block" data-testid="error-banner">
+              <AlertTriangle size={17} /><span><strong>Could not complete</strong>{outcome.message}</span>
             </div>
-          </div>
-          <div>
-            <div className="label">Detector</div>
-            <div className="mono" style={{ marginTop: 8 }}>{packet.opportunity.detectorVersion}</div>
-          </div>
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          {Object.entries(packet.opportunity.failureReasonBreakdown).map(([reason, count]) => (
-            <span key={reason} className="pill pill-muted">{reason.toLowerCase()} · {count}</span>
-          ))}
-        </div>
-      </div>
+          )}
+        </AnimatePresence>
 
-      {/* 2. AI recommendation */}
-      <div className="card">
-        <h2>
-          AI Recommendation
-          <span className="pill pill-accent">{packet.reasoningMode}</span>
-        </h2>
-        <p style={{ marginTop: 0 }}>
-          <strong data-testid="selected-playbook">{packet.recommendation.playbookName}</strong>{" "}
-          <span className="mono">({packet.recommendation.playbookKey})</span>
-          {" · expected net "}
-          <strong>{formatRupees(packet.recommendation.estimate.expectedNetPaise)}</strong>
-        </p>
-        {packet.reasoningMode === "DETERMINISTIC_FALLBACK" && (
-          <p className="muted" style={{ fontSize: 13 }}>
-            The model did not return a usable answer, so the system selected the highest
-            expected net deterministically and labelled it rather than stalling.
-          </p>
-        )}
-        <div className="prose" style={{ marginTop: 10 }}>{packet.recommendation.rationale}</div>
+        {/* --------------------------------------- summary + AI reasoning */}
+        <div className="grid-2" style={{ alignItems: "start" }}>
+          <div className="card">
+            <div className="card-head">
+              <h2>Decision summary</h2>
+              <span className="spacer" />
+              <span className={decisionPill(packet.state)}>{packet.state}</span>
+            </div>
 
-        {packet.recommendation.risksIdentified.length > 0 && (
-          <>
-            <label>Risks identified</label>
-            <ul className="risks">
-              {packet.recommendation.risksIdentified.map((risk) => <li key={risk}>{risk}</li>)}
-            </ul>
-          </>
-        )}
-        {packet.recommendation.confidenceNote && (
-          <>
-            <label>Confidence note</label>
-            <div className="prose">{packet.recommendation.confidenceNote}</div>
-          </>
-        )}
-      </div>
+            <div className="kpi-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="kpi kpi-historical" style={{ boxShadow: "none" }}>
+                <div className="label">At risk</div>
+                <div className="value" style={{ fontSize: 22 }} data-testid="recoverable-amount">
+                  {formatRupees(packet.opportunity.recoverableAmountPaise)}
+                </div>
+                <div className="note">{packet.opportunity.affectedCustomerCount} customers</div>
+              </div>
+              <div className="kpi kpi-projected" style={{ boxShadow: "none" }}>
+                <div className="label">Expected net</div>
+                <div className="value" style={{ fontSize: 22 }}>
+                  {formatRupees(selected.expectedNetPaise)}
+                </div>
+                <div className="note">Estimate · {selected.confidence} confidence</div>
+              </div>
+            </div>
 
-      {/* 3. Alternatives */}
-      <div className="card">
-        <h2>Alternatives considered</h2>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-          All figures come from the deterministic estimator. The model ranked these; it
-          computed none of them.
-        </p>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Playbook</th><th className="num">Recovery</th><th className="num">Gross</th>
-                <th className="num">Cost</th><th className="num">Expected net</th>
-                <th>Confidence</th><th />
-              </tr>
-            </thead>
-            <tbody>
-              {packet.alternatives.map((alternative) => (
-                <tr key={alternative.estimateId} className={alternative.isSelected ? "selected" : ""}>
-                  <td>{alternative.playbookName}</td>
-                  <td className="num">{formatPercent(alternative.pRecoverAvgBps)}</td>
-                  <td className="num">{formatRupees(alternative.expectedGrossPaise)}</td>
-                  <td className="num">{formatRupees(alternative.costPaise)}</td>
-                  <td className="num"><strong>{formatRupees(alternative.expectedNetPaise)}</strong></td>
-                  <td><span className="pill pill-muted">{alternative.confidence}</span></td>
-                  <td>{alternative.isSelected && <span className="pill pill-accent">selected</span>}</td>
-                </tr>
+            <label>Failure reasons in this cohort</label>
+            <div className="row" style={{ gap: 6 }}>
+              {Object.entries(packet.opportunity.failureReasonBreakdown).map(([reason, count]) => (
+                <span key={reason} className="badge badge-neutral">
+                  {reason.toLowerCase().replaceAll("_", " ")} · {count}
+                </span>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
 
-      {/* 4. Guardrails */}
-      {[preApproval, preExecution].filter(Boolean).map((evaluation) => (
-        <div className="card" key={evaluation!.id}>
-          <h2>
-            Guardrails — {evaluation!.phase.replace("_", " ").toLowerCase()}
-            <span className={decisionPill(evaluation!.decision)}>{evaluation!.decision}</span>
-            <span className="mono">policy v{evaluation!.policyVersion}</span>
-          </h2>
-          <div className="table-scroll">
-            <table data-testid={`guardrail-table-${evaluation!.phase}`}>
-              <thead>
-                <tr><th>Rule</th><th>Observed</th><th>Limit</th><th>Result</th><th>Explanation</th></tr>
-              </thead>
-              <tbody>
-                {evaluation!.results.map((result) => (
-                  <tr key={result.ruleId}>
-                    <td>{result.label}<div className="mono">{result.ruleId}</div></td>
-                    <td className="mono">{result.observed}</td>
-                    <td className="mono">{result.limit}</td>
-                    <td>
-                      <span className={result.passed ? "pill pill-pass" : decisionPill(result.severity)}>
-                        {result.passed ? "PASS" : result.severity}
-                      </span>
-                    </td>
-                    <td className="muted" style={{ fontSize: 13 }}>{result.message}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <label>Recommended action</label>
+            <div className="row" style={{ gap: 8 }}>
+              <strong data-testid="selected-playbook" style={{ fontSize: 15 }}>
+                {packet.recommendation.playbookName}
+              </strong>
+              <span className="mono">{packet.recommendation.playbookKey}</span>
+            </div>
+          </div>
+
+          <div className="card card-ai">
+            <div className="card-head">
+              <span className="badge badge-ai"><Brain />AI recommendation</span>
+              <span className="spacer" />
+              <span className="badge badge-neutral">{packet.reasoningMode}</span>
+            </div>
+
+            {packet.reasoningMode === "DETERMINISTIC_FALLBACK" && (
+              <div className="banner banner-info" style={{ marginBottom: 14 }}>
+                <AlertTriangle size={15} />
+                <span>
+                  The model did not return a usable answer, so the system selected the highest
+                  expected net deterministically and labelled it rather than stalling.
+                </span>
+              </div>
+            )}
+
+            <div className="prose">{packet.recommendation.rationale}</div>
+
+            {packet.recommendation.risksIdentified.length > 0 && (
+              <>
+                <label>Risks identified</label>
+                <ul className="risks">
+                  {packet.recommendation.risksIdentified.map((risk) => <li key={risk}>{risk}</li>)}
+                </ul>
+              </>
+            )}
+            {packet.recommendation.confidenceNote && (
+              <>
+                <label>Confidence note</label>
+                <div className="prose" style={{ fontSize: 13.5 }}>{packet.recommendation.confidenceNote}</div>
+              </>
+            )}
           </div>
         </div>
-      ))}
 
-      {/* 5. Customer message */}
-      <div className="card">
-        <h2>Customer message</h2>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-          Text only. Financial parameters cannot be edited here — they come from the
-          estimator and would invalidate the guardrail evaluation.
-        </p>
-        <label htmlFor="subject">Subject</label>
-        <input
-          id="subject" type="text" value={subject} data-testid="message-subject"
-          disabled={!decidable} onChange={(event) => setSubject(event.target.value)}
-        />
-        <label htmlFor="body">Body</label>
-        <textarea
-          id="body" rows={9} value={body} data-testid="message-body"
-          disabled={!decidable} onChange={(event) => setBody(event.target.value)}
-        />
-        {edited && <p className="muted" style={{ fontSize: 12 }}>Edited — your version will be stored with the approval.</p>}
-
-        {/* 6. Approval controls */}
-        {decidable ? (
-          <div className="actions">
-            <button className="danger" disabled={busy} data-testid="reject-button"
-              onClick={() => decide("reject")}>Reject</button>
-            <button className="primary" disabled={busy} data-testid="approve-button"
-              onClick={() => decide("approve")}>
-              {busy ? "Checking guardrails…" : "Approve"}
-            </button>
+        {/* -------------------------------------------------- alternatives */}
+        <div className="card">
+          <div className="card-head">
+            <h2>Alternatives considered</h2>
+            <span className="spacer" />
+            <span className="mono">{selected.estimatorVersion}</span>
           </div>
-        ) : (
-          <p className="muted" style={{ marginTop: 16 }} data-testid="not-decidable">
-            This intervention is {packet.state} and can no longer be decided.
-            {packet.approval && ` ${packet.approval.decision} by ${packet.approval.approver}.`}
+          <p className="card-note">
+            Every figure comes from the deterministic estimator. The model ranked these; it
+            computed none of them.
           </p>
-        )}
-      </div>
-
-      {/* Execution */}
-      {(executable || hasExecuted) && (
-        <div className="card" data-testid="execution-card">
-          <h2>
-            Execution
-            <span className={hasExecuted ? "pill pill-pass" : "pill pill-warn"}>
-              {hasExecuted ? "EXECUTED" : "READY TO EXECUTE"}
-            </span>
-          </h2>
-
-          {!hasExecuted && (
-            <>
-              <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                Approved by {packet.approval?.approver ?? "an approver"}. The executor will
-                re-run the pre-execution guardrails against current state before creating
-                anything in Razorpay Test Mode.
-              </p>
-              <div className="actions">
-                <button className="accent" onClick={execute} disabled={busy} data-testid="execute-button">
-                  {busy ? "Executing…" : "Execute"}
-                </button>
-              </div>
-            </>
-          )}
-
-          {hasExecuted && (
-            <>
-              <div className="banner banner-ok" style={{ marginTop: 4 }}>
-                <strong>Payment link created — revenue has NOT yet been recovered.</strong>
-                Status is <em>awaiting payment</em>. Attribution arrives in the next phase,
-                when a real payment event confirms it.
-              </div>
-              <div className="table-scroll">
-                <table data-testid="artifact-table">
-                  <thead>
-                    <tr>
-                      <th>Razorpay Test Payment Link</th><th className="num">Amount</th>
-                      <th>Status</th><th>Provider id</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {packet.execution.artifacts.slice(0, 10).map((artifact) => (
-                      <tr key={artifact.id}>
-                        <td>
-                          <a href={artifact.shortUrl} target="_blank" rel="noreferrer noopener"
-                             data-testid="payment-link">{artifact.shortUrl}</a>
-                        </td>
-                        <td className="num">{formatRupees(artifact.amountPaise)}</td>
-                        <td><span className="pill pill-warn">awaiting payment</span></td>
-                        <td className="mono">{artifact.providerEntityId}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {packet.execution.artifacts.length > 10 && (
-                <p className="muted" style={{ fontSize: 12 }}>
-                  Showing 10 of {packet.execution.artifacts.length} links · total{" "}
-                  {formatRupees(packet.execution.totalAmountPaise)} awaiting payment.
-                </p>
-              )}
-            </>
-          )}
-
-          {packet.execution.attempts.length > 0 && (
-            <>
-              <label>Execution attempts</label>
-              <ul className="timeline">
-                {packet.execution.attempts.slice(0, 6).map((attempt) => (
-                  <li key={attempt.attemptNo}>
-                    <span className="seq">#{attempt.attemptNo}</span>
-                    <span className={attempt.status === "SUCCEEDED" ? "pill pill-pass" : "pill pill-block"}>
-                      {attempt.status}
-                    </span>
-                    <span className="mono">key {attempt.idempotencyKey}</span>
-                    {attempt.error && <span className="muted">{attempt.error.slice(0, 60)}</span>}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          <StrategyCards strategies={packet.alternatives} />
         </div>
-      )}
 
-      {/* Attribution — realised revenue, or an explanation of its absence */}
-      {(converted || awaitingPayment) && (
-        <div className="card" data-testid="attribution-card">
-          <h2>
-            Attribution
-            <span className={converted ? "pill pill-pass" : "pill pill-warn"}>
-              {converted ? "CONVERTED" : "AWAITING PAYMENT"}
-            </span>
-          </h2>
+        {/* ---------------------------------------------------- guardrails */}
+        {preApproval && (
+          <GuardrailPanel
+            phase={preApproval.phase} decision={preApproval.decision}
+            policyVersion={preApproval.policyVersion} results={preApproval.results}
+          />
+        )}
+        {preExecution && (
+          <GuardrailPanel
+            phase={preExecution.phase} decision={preExecution.decision}
+            policyVersion={preExecution.policyVersion} results={preExecution.results}
+          />
+        )}
 
-          {converted ? (
-            <>
-              <div className="row" style={{ gap: 32, marginBottom: 8 }}>
-                <div>
-                  <div className="label">Actual recovered revenue</div>
-                  <div style={{ fontSize: 26, fontWeight: 650 }} data-testid="recovered-amount">
-                    {formatRupees(packet.attribution.recoveredAmountPaise)}
-                  </div>
-                  {/* Realised, not projected. */}
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Confirmed by a verified payment event
-                  </div>
-                </div>
-                <div>
-                  <div className="label">Expected net (estimate)</div>
-                  <div style={{ fontSize: 26, fontWeight: 650, color: "var(--muted)" }}>
-                    {formatRupees(packet.recommendation.estimate.expectedNetPaise)}
-                  </div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    What the estimator projected, unchanged
-                  </div>
-                </div>
-              </div>
+        {/* ----------------------------------------------------- approval */}
+        <div className="card">
+          <div className="card-head">
+            <h2>{decidable ? "Ready for approval" : "Customer message"}</h2>
+            <span className="spacer" />
+            {decidable && <span className="badge badge-warn">Awaiting your decision</span>}
+          </div>
+          <p className="card-note">
+            Text only. Financial parameters cannot be edited here — they come from the
+            estimator, and changing them would invalidate the guardrail evaluation.
+          </p>
 
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Method</th><th>Confidence</th><th className="num">Amount</th>
-                      <th>Payment event</th><th>When</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {packet.attribution.records.map((record) => (
-                      <tr key={record.id}>
-                        <td>
-                          <span className="pill pill-accent" data-testid="attribution-method">
-                            {record.method}
-                          </span>
-                        </td>
-                        <td><span className="pill pill-pass">{record.confidence}</span></td>
-                        <td className="num">{formatRupees(record.attributedAmountPaise)}</td>
-                        <td className="mono">
-                          {record.providerEventId ?? "—"}
-                          {record.simulated && (
-                            <span className="pill pill-warn" style={{ marginLeft: 6 }}>simulated</span>
-                          )}
-                        </td>
-                        <td className="mono">{formatDateTime(record.attributedAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {packet.attribution.records[0]?.note && (
-                <p className="muted" style={{ fontSize: 13 }}>
-                  {packet.attribution.records[0].note}
-                </p>
-              )}
-            </>
+          <label htmlFor="subject">Subject</label>
+          <input
+            id="subject" type="text" value={subject} data-testid="message-subject"
+            disabled={!decidable} onChange={(event) => setSubject(event.target.value)}
+          />
+          <label htmlFor="body">Body</label>
+          <textarea
+            id="body" rows={8} value={body} data-testid="message-body"
+            disabled={!decidable} onChange={(event) => setBody(event.target.value)}
+          />
+          {edited && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Edited — your version will be stored with the approval.
+            </p>
+          )}
+
+          {decidable ? (
+            <div className="actions">
+              <button className="danger" disabled={busy} data-testid="reject-button"
+                onClick={() => decide("reject")}>
+                <XCircle size={15} />Reject
+              </button>
+              <button className="approve" disabled={busy} data-testid="approve-button"
+                onClick={() => decide("approve")}>
+                <ShieldCheck size={16} />
+                {busy ? "Checking guardrails…" : "Approve & continue"}
+              </button>
+            </div>
           ) : (
-            <>
-              <p className="muted" style={{ fontSize: 14, marginTop: 0 }}>
-                The payment link exists and is awaiting payment. Nothing is counted as
-                recovered until a verified payment event arrives and attribution resolves.
-                If the evidence is ambiguous the system will refuse to claim credit rather
-                than guess.
-              </p>
-              <div className="actions">
-                <button
-                  onClick={() => simulate(packet.execution.artifacts[0]!.id)}
-                  disabled={busy}
-                  data-testid="simulate-payment"
+            <p className="muted" style={{ marginTop: 16 }} data-testid="not-decidable">
+              This intervention is {packet.state} and can no longer be decided.
+              {packet.approval && ` ${packet.approval.decision} by ${packet.approval.approver}.`}
+            </p>
+          )}
+        </div>
+
+        {/* ---------------------------------------------------- execution */}
+        {(executable || hasExecuted) && (
+          <div className="card" data-testid="execution-card">
+            <div className="card-head">
+              <h2>Payment action</h2>
+              <span className="badge badge-warn"><CreditCard />Razorpay Test Mode</span>
+              <span className="spacer" />
+              <span className={hasExecuted ? "badge badge-ok" : "badge badge-warn"}>
+                {hasExecuted ? "EXECUTED" : "READY TO EXECUTE"}
+              </span>
+            </div>
+
+            {!hasExecuted ? (
+              <>
+                <p className="card-note">
+                  Approved by {packet.approval?.approver ?? "an approver"}. The executor
+                  re-runs the pre-execution guardrails against current state before creating
+                  anything in Razorpay.
+                </p>
+                <div className="actions">
+                  <button className="primary" onClick={execute} disabled={busy} data-testid="execute-button">
+                    <ArrowRight size={15} />{busy ? "Executing…" : "Execute action"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="banner banner-ok">
+                  <Link2 size={16} />
+                  <span>
+                    <strong>Payment link created — revenue has NOT yet been recovered.</strong>
+                    Status is <em>awaiting payment</em>. Attribution follows a verified payment event.
+                  </span>
+                </div>
+                <div className="table-scroll">
+                  <table data-testid="artifact-table">
+                    <thead>
+                      <tr>
+                        <th>Razorpay Test payment link</th><th className="num">Amount</th>
+                        <th>Status</th><th>Provider id</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {packet.execution.artifacts.slice(0, 8).map((artifact) => (
+                        <tr key={artifact.id}>
+                          <td>
+                            <a href={artifact.shortUrl} target="_blank" rel="noreferrer noopener"
+                               data-testid="payment-link" className="row" style={{ gap: 5 }}>
+                              {artifact.shortUrl}<ExternalLink size={12} />
+                            </a>
+                          </td>
+                          <td className="num">{formatRupees(artifact.amountPaise)}</td>
+                          <td><span className="badge badge-warn">awaiting payment</span></td>
+                          <td className="mono">{artifact.providerEntityId}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {packet.execution.artifacts.length > 8 && (
+                  <p className="muted" style={{ fontSize: 12 }}>
+                    Showing 8 of {packet.execution.artifacts.length} links ·{" "}
+                    {formatRupees(packet.execution.totalAmountPaise)} awaiting payment.
+                  </p>
+                )}
+                {packet.execution.attempts.length > 0 && (
+                  <>
+                    <label>Execution attempts</label>
+                    <div className="row" style={{ gap: 7 }}>
+                      {packet.execution.attempts.slice(0, 6).map((attempt) => (
+                        <span key={attempt.attemptNo}
+                          className={attempt.status === "SUCCEEDED" ? "badge badge-ok" : "badge badge-stop"}>
+                          #{attempt.attemptNo} {attempt.status} · key {attempt.idempotencyKey}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* -------------------------------------------------- attribution */}
+        {(converted || awaitingPayment) && (
+          <div className="card" data-testid="attribution-card">
+            <div className="card-head">
+              <h2>Attribution</h2>
+              <span className="spacer" />
+              <span className={converted ? "badge badge-ok" : "badge badge-warn"}>
+                {converted ? "CONVERTED" : "AWAITING PAYMENT"}
+              </span>
+            </div>
+
+            {converted ? (
+              <>
+                <motion.div
+                  className="banner banner-ok"
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
                 >
-                  {busy ? "Delivering event…" : "Simulate payment (demo)"}
-                </button>
+                  <CheckCircle2 size={17} />
+                  <span><strong>Payment verified</strong>Attribution resolved from a verified payment event.</span>
+                </motion.div>
+
+                <div className="kpi-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                  <div className="kpi kpi-actual">
+                    <span className="kpi-tag">Actual</span>
+                    <div className="label">Actual recovered revenue</div>
+                    {/* Realised money, not the projection beside it. */}
+                    <Counter
+                      className="value hero"
+                      value={packet.attribution.recoveredAmountPaise}
+                                            testId="recovered-amount"
+                    />
+                    <div className="note">Confirmed by a verified payment event</div>
+                  </div>
+                  <div className="kpi kpi-projected">
+                    <span className="kpi-tag">Estimate</span>
+                    <div className="label">Expected net</div>
+                    <div className="value" style={{ color: "var(--ink-400)" }}>
+                      {formatRupees(selected.expectedNetPaise)}
+                    </div>
+                    <div className="note">What the estimator projected, unchanged</div>
+                  </div>
+                </div>
+
+                <div className="table-scroll" style={{ marginTop: 14 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Method</th><th>Confidence</th><th className="num">Amount</th>
+                        <th>Payment event</th><th>When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {packet.attribution.records.map((record) => (
+                        <tr key={record.id}>
+                          <td>
+                            <span className="badge badge-blue" data-testid="attribution-method">
+                              {record.method}
+                            </span>
+                          </td>
+                          <td><span className="badge badge-ok">{record.confidence}</span></td>
+                          <td className="num">{formatRupees(record.attributedAmountPaise)}</td>
+                          <td className="mono">
+                            {record.providerEventId ?? "—"}
+                            {record.simulated && (
+                              <span className="badge badge-warn" style={{ marginLeft: 6 }}>simulated</span>
+                            )}
+                          </td>
+                          <td className="mono">{formatDateTime(record.attributedAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="card-note">
+                  The payment link exists and is awaiting payment. Nothing is counted as
+                  recovered until a verified payment event arrives and attribution resolves.
+                  If the evidence is ambiguous, RevenuePilot refuses to claim the revenue
+                  rather than guessing.
+                </p>
+                <div className="actions">
+                  <button
+                    onClick={() => simulate(packet.execution.artifacts[0]!.id)}
+                    disabled={busy} data-testid="simulate-payment"
+                  >
+                    <TrendingUp size={15} />
+                    {busy ? "Delivering event…" : "Simulate payment (demo)"}
+                  </button>
+                </div>
+                <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                  The simulation builds a signed provider event and pushes it through the same
+                  webhook pipeline — it cannot mark this converted by itself.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ----------------------------------------------------- timeline */}
+        <div className="card">
+          <div className="card-head"><h2>Activity timeline</h2></div>
+          <ul className="timeline" data-testid="audit-timeline">
+            {packet.auditTimeline.map((entry) => (
+              <li key={entry.seq}>
+                <span className="tl-icon"><Sparkles strokeWidth={2} /></span>
+                <span className="tl-body">
+                  <span className="tl-label">{entry.action.replaceAll("_", " ").toLowerCase()}</span>
+                  <span className="tl-detail">{entry.actorType} · #{entry.seq}</span>
+                </span>
+                <span className="tl-time">{formatDateTime(entry.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+          {packet.reasoning.length > 0 && (
+            <>
+              <label>Model attempts</label>
+              <div className="row" style={{ gap: 7 }}>
+                {packet.reasoning.map((call) => (
+                  <span key={call.id} className={call.isValid ? "badge badge-ok" : "badge badge-stop"}>
+                    #{call.attemptNo} {call.outcome} · {call.provider}/{call.model} · {call.latencyMs}ms
+                  </span>
+                ))}
               </div>
-              <p className="muted" style={{ fontSize: 12 }}>
-                The simulation builds a signed provider event and pushes it through the same
-                webhook pipeline — it cannot mark this converted by itself.
-              </p>
             </>
           )}
         </div>
-      )}
-
-      {/* 7. Audit timeline */}
-      <div className="card">
-        <h2>Audit timeline</h2>
-        <ul className="timeline" data-testid="audit-timeline">
-          {packet.auditTimeline.map((entry) => (
-            <li key={entry.seq}>
-              <span className="seq">#{entry.seq}</span>
-              <span className="pill pill-muted">{entry.actorType}</span>
-              <span>{entry.action.replaceAll("_", " ").toLowerCase()}</span>
-              <span className="when">{formatDateTime(entry.createdAt)}</span>
-            </li>
-          ))}
-        </ul>
-        {packet.reasoning.length > 0 && (
-          <>
-            <label>Model attempts</label>
-            <ul className="timeline">
-              {packet.reasoning.map((call) => (
-                <li key={call.id}>
-                  <span className="seq">#{call.attemptNo}</span>
-                  <span className={call.isValid ? "pill pill-pass" : "pill pill-block"}>{call.outcome}</span>
-                  <span className="mono">{call.provider}/{call.model}</span>
-                  <span className="when">{call.latencyMs}ms</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
       </div>
-    </main>
+    </>
   );
 }

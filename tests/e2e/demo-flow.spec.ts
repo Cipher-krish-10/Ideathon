@@ -77,7 +77,9 @@ test.describe("RevenuePilot demo flow", () => {
     await expect(page.getByText("₹2,23,414.04").first()).toBeVisible();
     await expect(page.getByText("₹2,00,508.37").first()).toBeVisible();
     await expect(page.getByText("₹1,42,921.20").first()).toBeVisible();
-    await expect(page.locator("tr.selected")).toHaveCount(1);
+    // The alternatives are cards now; exactly one carries the AI-selected mark.
+    await expect(page.locator(".strategy.chosen")).toHaveCount(1);
+    await expect(page.getByText("AI selected")).toBeVisible();
 
     // The guardrail table shows every rule with observed vs limit.
     const table = page.getByTestId("guardrail-table-PRE_APPROVAL");
@@ -171,7 +173,8 @@ test.describe("RevenuePilot demo flow", () => {
     await page.goto("/analytics");
     await expect(page.getByTestId("analytics-recovered")).not.toHaveText("₹0.00");
     await expect(page.getByTestId("learning-table")).toBeVisible();
-    await expect(page.getByRole("cell", { name: "Converted" })).toBeVisible();
+    // The funnel is a bar chart now rather than a table.
+    await expect(page.getByText("Converted", { exact: true })).toBeVisible();
   });
 
   test("a replayed simulated payment does not double-count", async ({ page }) => {

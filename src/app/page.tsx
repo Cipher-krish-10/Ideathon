@@ -1,13 +1,18 @@
-import { ActivityFeed } from "@/components/activity-feed";
+import Link from "next/link";
+import { Activity, Sparkles } from "lucide-react";
+
+import { ActivityTimeline } from "@/components/dashboard/activity-timeline";
+import { OpportunityHero } from "@/components/dashboard/opportunity-hero";
+import { RevenueFlow } from "@/components/dashboard/revenue-flow";
+import type { FlowPhase } from "@/components/dashboard/revenue-flow";
 import { DemoControls } from "@/components/demo-controls";
-import { RunAgentButton } from "@/components/run-agent-button";
+import { TopBar } from "@/components/layout/topbar";
+import { Counter } from "@/components/ui/counter";
 import { formatRupees } from "@/lib/format";
 import { getEnv } from "@/lib/env";
 import { requireSession } from "@/server/auth/session";
 import {
-  getDashboardMetrics,
-  getLatestArtifactId,
-  listInterventions,
+  getDashboardMetrics, getLatestArtifactId, listInterventions,
 } from "@/server/services/read.service";
 import { getActivityFeed, getSimulationState } from "@/server/services/simulation";
 
@@ -16,166 +21,206 @@ export const dynamic = "force-dynamic";
 /**
  * Command Centre.
  *
- * The organising idea of this page is a hard separation between what the
- * merchant's HISTORY says and what happened in THIS demo session. Historical
- * figures are potential; session figures are what the agent actually did; and
- * only an attributed payment is called recovered revenue.
+ * Organised around one distinction: what the merchant's HISTORY says versus
+ * what this session actually did. Historical figures are potential; session
+ * figures are facts; and only an attributed payment is called revenue. The
+ * layout never places the two in the same row.
  */
 export default async function CommandCentre() {
   const session = await requireSession();
-  const [metrics, pending, simulation, activity, latestArtifact] = await Promise.all([
+  const [metrics, pending, simulation, activity, artifactId] = await Promise.all([
     getDashboardMetrics(session.merchantId),
-    listInterventions(session.merchantId, "PENDING_APPROVAL"),
+    listInterventions(session.merchantId),
     getSimulationState(session.merchantId),
     getActivityFeed(session.merchantId),
     getLatestArtifactId(session.merchantId),
   ]);
 
+  // The agent's real position in the pipeline, derived from persisted state.
+  const states = new Set(pending.map((intervention) => intervention.state));
+  const phase: FlowPhase =
+    metrics.recoveredAmountPaise > 0 ? "CONVERTED"
+    : metrics.executedInterventions > 0 ? "EXECUTED"
+    : states.has("APPROVED") ? "APPROVED"
+    : states.has("PENDING_APPROVAL") ? "AWAITING_APPROVAL"
+    : states.has("PROPOSED") || states.has("GUARDRAIL_BLOCKED") ? "REASONED"
+    : metrics.openOpportunities > 0 ? "OBSERVED"
+    : "IDLE";
+
+  const awaiting = pending.filter((i) => i.state === "PENDING_APPROVAL");
+  const latest = pending[0];
   const simulatedNow = new Date(simulation.simulatedNow);
-  const format = (date: Date) =>
-    date.toLocaleString("en-IN", {
-      dateStyle: "medium", timeStyle: "medium", timeZone: "Asia/Kolkata",
-    });
 
   return (
-    <main className="page">
-      <div className="agent-header">
-        <div className="title">
-          <h1>RevenuePilot</h1>
-          <div className="role">Merchant Growth Agent · Nimbus Commerce</div>
-        </div>
+    <>
+      <TopBar
+        title="Command Centre"
+        agentStatus={simulation.status}
+        simulationTime={simulatedNow.toLocaleString("en-IN", {
+          dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata",
+        })}
+      />
 
-        <div className="env">
-          {/* Said plainly: the history is synthetic, the provider is test mode. */}
-          <span className="env-tag" data-testid="env-demo">Demo environment</span>
-          <span className="env-tag test">Razorpay Test Mode</span>
-        </div>
-
-        <div className="clock">
-          <div className="label">Simulation time</div>
-          <div className="value" data-testid="simulation-time">{format(simulatedNow)}</div>
-          <div className="label" style={{ marginTop: 8 }}>Agent status</div>
-          <div className="value" data-testid="agent-status">
-            <span className={`status-dot ${simulation.status === "ACTIVE" ? "active" : "idle"}`} />
-            {simulation.status === "ACTIVE" ? "Active" : "Idle"}
+      <div className="content">
+        {/* ---------------------------------------------------------- hero */}
+        <div style={{ marginBottom: "var(--s-5)" }}>
+          <div className="row" style={{ gap: 10, marginBottom: 10 }}>
+            <span className="badge badge-ai"><Sparkles />Autonomous merchant growth agent</span>
+            <span className="badge badge-neutral" data-testid="env-demo">Demo environment</span>
           </div>
-        </div>
-      </div>
-
-      {/* ---------------- Historical baseline ---------------- */}
-      <div className="section-label">Historical merchant baseline · synthetic payment history</div>
-      <div className="grid grid-4">
-        <div className="metric historical">
-          <div className="label">Detected opportunity</div>
-          <div className="value" data-testid="historical-opportunity">
-            {formatRupees(metrics.recoverableAmountPaise)}
-          </div>
-          {/* Never called revenue: this is what was found at risk, not earned. */}
-          <div className="note">Potential, from merchant history</div>
-        </div>
-        <div className="metric historical">
-          <div className="label">Qualifying customers</div>
-          <div className="value">{metrics.qualifyingCustomers}</div>
-          <div className="note">Detected from payment history</div>
-        </div>
-        <div className="metric historical">
-          <div className="label">Open opportunities</div>
-          <div className="value">{metrics.openOpportunities}</div>
-          <div className="note">Awaiting an agent decision</div>
-        </div>
-        <div className="metric historical">
-          <div className="label">Baseline ends</div>
-          <div className="value" style={{ fontSize: 15, fontFamily: "var(--mono)" }}>
-            {new Date(simulation.baselineAt).toLocaleDateString("en-IN", {
-              dateStyle: "medium", timeZone: "Asia/Kolkata",
-            })}
-          </div>
-          <div className="note">History stops here; the session starts</div>
-        </div>
-      </div>
-
-      {/* ---------------- This session ---------------- */}
-      <div className="section-label">This demo session · generated now, in Razorpay Test Mode</div>
-      <div className="grid grid-4">
-        <div className="metric projected">
-          <div className="label">Expected net</div>
-          <div className="value">{formatRupees(metrics.expectedNetPaise)}</div>
-          <div className="note">ESTIMATE · estimator projection</div>
-        </div>
-        <div className="metric actual">
-          <div className="label">Executed actions</div>
-          <div className="value" data-testid="executed-actions">{metrics.executedInterventions}</div>
-          <div className="note">ACTUAL · links created at the provider</div>
-        </div>
-        <div className="metric actual">
-          <div className="label">Awaiting payment</div>
-          <div className="value">{formatRupees(metrics.paymentLinkValuePaise)}</div>
-          <div className="note">{metrics.paymentLinksCreated} link(s) · not yet collected</div>
-        </div>
-        <div className="metric actual">
-          <div className="label">Actual recovered revenue</div>
-          <div className="value" data-testid="recovered-revenue">
-            {formatRupees(metrics.recoveredAmountPaise)}
-          </div>
-          {/* Sourced solely from attribution records. */}
-          <div className="note">ACTUAL · confirmed by payment events</div>
-        </div>
-      </div>
-
-      <div className="grid grid-2" style={{ marginTop: 18 }}>
-        <div className="card">
-          <h2>Agent</h2>
-          <p className="muted" style={{ fontSize: 14, marginTop: 0 }}>
-            Runs detector → estimator → reasoner → guardrails over the merchant&apos;s
-            history, then stops for a human. No money action can follow without approval.
+          <h2 style={{ fontSize: 30, margin: "0 0 6px", letterSpacing: "-.032em", fontWeight: 650 }}>
+            Find lost revenue. Choose the best intervention. Act safely.
+          </h2>
+          <p className="muted" style={{ margin: 0, fontSize: 14.5, maxWidth: 640 }}>
+            RevenuePilot reads the merchant&apos;s payment history, scores every recovery
+            strategy deterministically, and asks a human before anything moves.
           </p>
-          <RunAgentButton />
         </div>
 
-        <div className="card">
-          <h2>Demo controls</h2>
-          <DemoControls enabled={getEnv().DEMO_MODE} artifactId={latestArtifact} />
-        </div>
-      </div>
+        <RevenueFlow
+          phase={phase}
+          captions={{
+            data: "1,200 transactions",
+            opportunity: `${metrics.qualifyingCustomers} customers`,
+            ai: latest?.reasoningMode === "LLM" ? "model reasoning" : "deterministic",
+            guardrail: "10 rules",
+            razorpay: `${metrics.paymentLinksCreated} link(s)`,
+            revenue: formatRupees(metrics.recoveredAmountPaise),
+          }}
+        />
 
-      <div className="card">
-        <h2>
-          Activity
-          <span className="pill pill-muted">this session</span>
-        </h2>
-        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-          Every line below is derived from the append-only audit log — an audited
-          operation produced it. Nothing here is generated for effect.
-        </p>
-        <ActivityFeed initial={activity} />
-      </div>
-
-      {pending.length > 0 && (
-        <div className="card">
-          <h2>Awaiting your approval</h2>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Playbook</th><th>Customers</th>
-                  <th className="num">Expected net</th><th>Confidence</th><th />
-                </tr>
-              </thead>
-              <tbody>
-                {pending.map((intervention) => (
-                  <tr key={intervention.id}>
-                    <td>{intervention.playbookName}</td>
-                    <td>{intervention.targetCount}</td>
-                    <td className="num">{formatRupees(intervention.expectedNetPaise)}</td>
-                    <td><span className="pill pill-muted">{intervention.confidence}</span></td>
-                    <td><a href={`/interventions/${intervention.id}`}>Open decision packet →</a></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* ------------------------------------------ historical baseline */}
+        <div className="section-label">Historical merchant baseline · synthetic payment history</div>
+        <div className="kpi-grid">
+          <div className="kpi kpi-historical" style={{ gridColumn: "span 2" }}>
+            <span className="kpi-tag">Potential</span>
+            <div className="label">Recoverable opportunity</div>
+            {/* Never called revenue: money at risk, not money earned. */}
+            <Counter
+              className="value hero"
+              value={metrics.recoverableAmountPaise}
+                            testId="historical-opportunity"
+            />
+            <div className="note">Potential, from merchant history</div>
+          </div>
+          <div className="kpi kpi-historical">
+            <div className="label">Qualifying customers</div>
+            <div className="value">{metrics.qualifyingCustomers}</div>
+            <div className="note">Detected from payment history</div>
+          </div>
+          <div className="kpi kpi-historical">
+            <div className="label">Baseline ends</div>
+            <div className="value" style={{ fontSize: 19 }}>
+              {new Date(simulation.baselineAt).toLocaleDateString("en-IN", {
+                dateStyle: "medium", timeZone: "Asia/Kolkata",
+              })}
+            </div>
+            <div className="note">History stops; the session begins</div>
           </div>
         </div>
-      )}
-    </main>
+
+        {/* ------------------------------------------------ this session */}
+        <div className="section-label">This demo session · Razorpay Test Mode</div>
+        <div className="kpi-grid">
+          <div className="kpi kpi-projected">
+            <span className="kpi-tag">Estimate</span>
+            <div className="label">Expected recovery</div>
+            <Counter className="value" value={metrics.expectedNetPaise} />
+            <div className="note">Estimator projection</div>
+          </div>
+          <div className="kpi kpi-actual">
+            <span className="kpi-tag">Actual</span>
+            <div className="label">Executed actions</div>
+            <div className="value" data-testid="executed-actions">{metrics.executedInterventions}</div>
+            <div className="note">Links created at the provider</div>
+          </div>
+          <div className="kpi kpi-actual">
+            <span className="kpi-tag">Actual</span>
+            <div className="label">Awaiting payment</div>
+            <Counter className="value" value={metrics.paymentLinkValuePaise} />
+            <div className="note">{metrics.paymentLinksCreated} link(s) · not yet collected</div>
+          </div>
+          <div className="kpi kpi-actual">
+            <span className="kpi-tag">Actual</span>
+            <div className="label">Recovered revenue</div>
+            {/* Sourced solely from attribution records. */}
+            <Counter
+              className="value"
+              value={metrics.recoveredAmountPaise}
+                            testId="recovered-revenue"
+            />
+            <div className="note">ACTUAL · confirmed by payment events</div>
+          </div>
+        </div>
+
+        {/* -------------------------------------------------- opportunity */}
+        {metrics.qualifyingCustomers > 0 && (
+          <div className="card" style={{ marginTop: "var(--s-5)" }}>
+            <div className="card-head">
+              <h2>Revenue opportunity detected</h2>
+              <span className="badge badge-blue">Detected from merchant history</span>
+            </div>
+            <OpportunityHero
+              failedTransactions={66}
+              qualifying={metrics.qualifyingCustomers}
+              customers={metrics.qualifyingCustomers}
+              valueLabel={formatRupees(metrics.recoverableAmountPaise)}
+            />
+          </div>
+        )}
+
+        <div className="grid-2">
+          <div className="card">
+            <div className="card-head">
+              <h2>Agent activity</h2>
+              <span className="spacer" />
+              <span className="badge badge-neutral">
+                <span className={`status-dot ${simulation.status === "ACTIVE" ? "active pulse" : "idle"}`} />
+                {simulation.status === "ACTIVE" ? "Active" : "Idle"}
+              </span>
+            </div>
+            <p className="card-note">
+              Derived from the append-only audit log. If a line appears here, an audited
+              operation produced it.
+            </p>
+            <ActivityTimeline initial={activity} />
+          </div>
+
+          <div>
+            {awaiting.length > 0 && (
+              <div className="card">
+                <div className="card-head">
+                  <h2>Awaiting your approval</h2>
+                  <span className="badge badge-warn">{awaiting.length}</span>
+                </div>
+                {awaiting.map((intervention) => (
+                  <div key={intervention.id} className="strategy chosen" style={{ marginBottom: 10 }}>
+                    <div className="s-name">{intervention.playbookName}</div>
+                    <div className="s-net">{formatRupees(intervention.expectedNetPaise)}</div>
+                    <div className="s-line"><span>Expected net</span><span>{intervention.confidence}</span></div>
+                    <div className="s-line"><span>Customers</span><span>{intervention.targetCount}</span></div>
+                    <Link
+                      href={`/interventions/${intervention.id}`}
+                      className="btn primary"
+                      style={{ marginTop: 14, width: "100%", justifyContent: "center" }}
+                    >
+                      Open decision packet
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="card">
+              <div className="card-head">
+                <h2>Demo controls</h2>
+                <span className="badge badge-neutral"><Activity />Simulation</span>
+              </div>
+              <DemoControls enabled={getEnv().DEMO_MODE} artifactId={artifactId} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
