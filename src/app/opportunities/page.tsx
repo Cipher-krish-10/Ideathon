@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowRight, Filter, Target, XCircle } from "lucide-react";
 
 import { TopBar } from "@/components/layout/topbar";
@@ -92,13 +93,13 @@ export default async function OpportunitiesPage() {
                 </div>
 
                 <div className="actions">
-                  <a className="btn" href={`/opportunities/${opportunity.id}`}>
+                  <Link className="btn" href={`/opportunities/${opportunity.id}`}>
                     <Filter size={14} />View evidence
-                  </a>
+                  </Link>
                   {opportunity.interventionCount > 0 && (
-                    <a className="btn primary" href="/interventions">
+                    <Link className="btn primary" href="/interventions">
                       View {opportunity.interventionCount} proposal(s)<ArrowRight size={14} />
-                    </a>
+                    </Link>
                   )}
                 </div>
               </div>
